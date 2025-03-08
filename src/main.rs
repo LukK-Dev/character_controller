@@ -1,4 +1,4 @@
-#![allow(clippy::type_complexity)]
+#![allow(dead_code, clippy::type_complexity)]
 
 mod flycam;
 mod game;
