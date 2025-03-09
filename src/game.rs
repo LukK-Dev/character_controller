@@ -9,6 +9,7 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 use crate::{
     flycam::{Flycam, FlycamPlugin},
+    physics::{CollisionLayer, PhysicsPlugin},
     player::{PlayerPlugin, SpawnPlayer},
 };
 
@@ -18,11 +19,13 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(PhysicsPlugins::default());
+        app.add_plugins(
+            PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
+        );
         app.add_plugins(PhysicsDebugPlugin::default());
         app.add_plugins(WorldInspectorPlugin::new());
 
-        app.add_plugins((PlayerPlugin, FlycamPlugin));
+        app.add_plugins((PlayerPlugin, FlycamPlugin, PhysicsPlugin::default()));
 
         app.add_systems(Startup, setup);
         app.add_systems(Update, (spawn_spheres, fullscreen_on_f11));
@@ -49,12 +52,16 @@ fn setup(mut commands: Commands, asset_server: ResMut<AssetServer>) {
 
     commands.spawn((
         SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(PLAYGROUND_SCENE_PATH))),
-        ColliderConstructorHierarchy::new(ColliderConstructor::TrimeshFromMesh),
+        ColliderConstructorHierarchy::new(ColliderConstructor::TrimeshFromMesh)
+            .with_default_layers(CollisionLayers::new(
+                CollisionLayer::Terrain,
+                LayerMask::ALL,
+            )),
         RigidBody::Static,
     ));
 
     commands.trigger(SpawnPlayer {
-        transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
+        transform: Transform::from_translation(Vec3::new(0.0, 3.0, 0.0)),
     });
 }
 

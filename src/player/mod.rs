@@ -2,7 +2,7 @@ use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind, prelude::*};
 use leafwing_input_manager::prelude::*;
 
-use crate::{flycam::Flycam, physics::CollisionLayer};
+use crate::physics::{CollisionLayer, Grounded, MoveAndSlide};
 
 const MOVE_AND_SLIDE_MAX_ITERATIONS: usize = 8;
 
@@ -13,7 +13,7 @@ impl Plugin for PlayerPlugin {
         app.add_plugins(InputManagerPlugin::<Action>::default());
 
         app.add_observer(on_spawn_player);
-        app.add_systems(Update, movement);
+        app.add_systems(Update, (movement, apply_gravity));
     }
 }
 
@@ -22,23 +22,30 @@ enum Action {
     #[actionlike(DualAxis)]
     Move,
     Jump,
+    Sprint,
 }
 
 #[derive(Component)]
 pub struct Player {
     acceleration: f32,
-    grounded_deceleration: f32,
-    gravity: f32,
     max_speed: f32,
+    sprint_acceleration: f32,
+    sprint_max_speed: f32,
+    grounded_deceleration: f32,
+    jump_impulse: f32,
+    gravity: f32,
 }
 
 impl Default for Player {
     fn default() -> Self {
         Self {
             acceleration: 20.0,
-            grounded_deceleration: 20.0,
-            gravity: 9.81,
             max_speed: 5.0,
+            sprint_acceleration: 30.0,
+            sprint_max_speed: 7.5,
+            grounded_deceleration: 30.0,
+            jump_impulse: 100.0,
+            gravity: 9.81,
         }
     }
 }
@@ -59,11 +66,13 @@ fn on_spawn_player(
     let input_map = InputMap::default()
         .with_dual_axis(
             Action::Move,
-            GamepadStick::LEFT.with_deadzone_symmetric(0.1),
+            GamepadStick::LEFT.with_deadzone_symmetric(0.2),
         )
         .with_dual_axis(Action::Move, VirtualDPad::wasd())
         .with(Action::Jump, GamepadButton::East)
-        .with(Action::Jump, KeyCode::Space);
+        .with(Action::Jump, KeyCode::Space)
+        .with(Action::Sprint, GamepadButton::South)
+        .with(Action::Sprint, KeyCode::ShiftLeft);
     let mesh = meshes.add(Capsule3d::new(0.5, 1.0));
     let material = materials.add(StandardMaterial {
         base_color: tailwind::RED_400.into(),
@@ -71,25 +80,29 @@ fn on_spawn_player(
     });
 
     commands.spawn((
-        Player::default(),
         Name::new("Player"),
+        Player::default(),
         InputManagerBundle::with_map(input_map),
         transform,
         RigidBody::Kinematic,
+        MoveAndSlide,
         Collider::capsule(0.5, 1.0),
-        CollisionLayers::new(CollisionLayer::Player, CollisionLayer::Terrain),
+        CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
         Mesh3d(mesh.clone()),
         MeshMaterial3d(material.clone()),
     ));
 }
 
 fn movement(
-    mut player: Query<(
-        &Player,
-        &ActionState<Action>,
-        &mut Transform,
-        &mut LinearVelocity,
-    )>,
+    mut player: Query<
+        (
+            &Player,
+            &ActionState<Action>,
+            &mut Transform,
+            &mut LinearVelocity,
+        ),
+        With<Grounded>,
+    >,
     time: Res<Time>,
     mut gizmos: Gizmos,
 ) {
@@ -99,6 +112,9 @@ fn movement(
             transform.translation + transform.forward().as_vec3() * 2.0,
             tailwind::BLUE_400,
         );
+
+        // stop player from falling through the floor
+        velocity.y = 0.0;
 
         let mut input_direction = input.clamped_axis_pair(&Action::Move).normalize_or_zero();
         input_direction.y = -input_direction.y;
@@ -110,16 +126,16 @@ fn movement(
             );
 
             // movement
-            // let acceleration = (transform.rotation
-            //     * Vec3::new(input_direction.x, 0.0, input_direction.y)
-            //     * player.acceleration
-            //     * time.delta_secs())
-            // .xz();
-            let acceleration = (Vec3::new(input_direction.x, 0.0, input_direction.y)
-                * player.acceleration
-                * time.delta_secs())
-            .xz();
-            let target_velocity = (velocity.xz() + acceleration).clamp_length_max(player.max_speed);
+            let mut acceleration = player.acceleration;
+            let mut max_speed = player.max_speed;
+            if input.pressed(&Action::Sprint) {
+                acceleration = player.sprint_acceleration;
+                max_speed = player.sprint_max_speed;
+            }
+
+            let target_speed =
+                (velocity.xz().length() + acceleration * time.delta_secs()).clamp(0.0, max_speed);
+            let target_velocity = input_direction * target_speed;
             velocity.x = target_velocity.x;
             velocity.z = target_velocity.y;
         } else {
@@ -133,5 +149,14 @@ fn movement(
             velocity.x = decelerated_velocity.x;
             velocity.z = decelerated_velocity.y;
         }
+    }
+}
+
+fn apply_gravity(
+    mut player: Query<(&Player, &mut LinearVelocity), Without<Grounded>>,
+    time: Res<Time>,
+) {
+    if let Ok((player, mut velocity)) = player.get_single_mut() {
+        velocity.y -= player.gravity * time.delta_secs();
     }
 }
