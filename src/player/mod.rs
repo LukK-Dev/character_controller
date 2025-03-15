@@ -2,7 +2,7 @@ use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind, prelude::*};
 use leafwing_input_manager::prelude::*;
 
-use crate::physics::{CollisionLayer, Grounded, MoveAndSlide};
+use crate::physics::{CollisionLayer, Grounded, KinematicCharacterController};
 
 const MOVE_AND_SLIDE_MAX_ITERATIONS: usize = 8;
 
@@ -13,7 +13,8 @@ impl Plugin for PlayerPlugin {
         app.add_plugins(InputManagerPlugin::<Action>::default());
 
         app.add_observer(on_spawn_player);
-        app.add_systems(Update, (movement, apply_gravity));
+
+        app.add_systems(Update, movement);
     }
 }
 
@@ -26,6 +27,11 @@ enum Action {
 }
 
 #[derive(Component)]
+#[require(Camera3d)]
+pub struct PlayerCamera;
+
+#[derive(Component)]
+#[require(KinematicCharacterController)]
 pub struct Player {
     acceleration: f32,
     max_speed: f32,
@@ -33,7 +39,6 @@ pub struct Player {
     sprint_max_speed: f32,
     grounded_deceleration: f32,
     jump_impulse: f32,
-    gravity: f32,
 }
 
 impl Default for Player {
@@ -45,7 +50,6 @@ impl Default for Player {
             sprint_max_speed: 7.5,
             grounded_deceleration: 30.0,
             jump_impulse: 100.0,
-            gravity: 9.81,
         }
     }
 }
@@ -83,13 +87,12 @@ fn on_spawn_player(
         Name::new("Player"),
         Player::default(),
         InputManagerBundle::with_map(input_map),
-        transform,
-        RigidBody::Kinematic,
-        MoveAndSlide,
+        KinematicCharacterController::default(),
         Collider::capsule(0.5, 1.0),
         CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
         Mesh3d(mesh.clone()),
         MeshMaterial3d(material.clone()),
+        transform,
     ));
 }
 
@@ -103,6 +106,7 @@ fn movement(
         ),
         With<Grounded>,
     >,
+    player_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
     time: Res<Time>,
     mut gizmos: Gizmos,
 ) {
@@ -124,6 +128,14 @@ fn movement(
                 Dir3::new_unchecked(Vec3::new(input_direction.x, 0.0, input_direction.y)),
                 Dir3::new_unchecked(Vec3::Y),
             );
+
+            // adjust rotation to take player camera rotation into account
+            if let Ok(player_camera_transform) = player_camera.get_single() {
+                let (yaw, _, _) = player_camera_transform.rotation.to_euler(EulerRot::YXZ);
+                let camera_rotation_offset = Quat::from_axis_angle(Vec3::Y, yaw);
+                transform.rotate(camera_rotation_offset);
+                input_direction = Mat2::from_angle(-yaw) * input_direction;
+            }
 
             // movement
             let mut acceleration = player.acceleration;
@@ -149,14 +161,5 @@ fn movement(
             velocity.x = decelerated_velocity.x;
             velocity.z = decelerated_velocity.y;
         }
-    }
-}
-
-fn apply_gravity(
-    mut player: Query<(&Player, &mut LinearVelocity), Without<Grounded>>,
-    time: Res<Time>,
-) {
-    if let Ok((player, mut velocity)) = player.get_single_mut() {
-        velocity.y -= player.gravity * time.delta_secs();
     }
 }
