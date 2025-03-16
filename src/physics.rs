@@ -63,38 +63,51 @@ pub struct Grounded;
 fn move_and_slide(
     mut bodies: Query<(
         &KinematicCharacterController,
-        &Transform,
         &Collider,
+        &mut Transform,
         &mut LinearVelocity,
     )>,
     spatial_query: SpatialQuery,
     iterations: Res<MoveAndSlideIterations>,
     time: Res<Time>,
-    mut gizmos: Gizmos,
 ) {
-    // for (controller, transform, collider, mut velocity) in bodies.iter_mut() {
-    //     if velocity.is_nan() || velocity.length_squared() == 0.0 {
-    //         return;
-    //     }
-    //
-    //     let direction = velocity.normalize();
-    //     if let Some(hit) = spatial_query.cast_shape(
-    //         collider,
-    //         transform.translation,
-    //         transform.rotation,
-    //         Dir3::new_unchecked(direction),
-    //         &ShapeCastConfig {
-    //             max_distance: velocity.length(),
-    //             ..Default::default()
-    //         },
-    //         &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
-    //     ) {
-    //         let movable_distance = hit
-    //             .distance
-    //             .clamp(0.0, velocity.length() - controller.collider_gap);
-    //         let   = transform.translation + direction * hit.distance;
-    //     }
-    // }
+    for (controller, collider, mut transform, mut velocity) in bodies.iter_mut() {
+        if velocity.is_nan() || velocity.length_squared() == 0.0 {
+            return;
+        }
+
+        let mut distance_to_move = velocity.length() * time.delta_secs();
+        let mut direction = velocity.normalize();
+        let mut slide_position = transform.translation;
+        let mut i = 0;
+        while distance_to_move <= 0.0 && i < iterations.0 {
+            if let Some(hit) = spatial_query.cast_shape(
+                collider,
+                slide_position,
+                transform.rotation,
+                Dir3::new_unchecked(direction),
+                &ShapeCastConfig {
+                    max_distance: distance_to_move,
+                    ..Default::default()
+                },
+                &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+            ) {
+                let movable_distance = hit
+                    .distance
+                    .clamp(0.0, velocity.length() - controller.collider_gap);
+                distance_to_move -= movable_distance;
+                // project direction vector onto plane defined by hit normal
+                direction =
+                    (direction + hit.normal1 * hit.normal1.dot(direction).abs()).normalize();
+                slide_position = transform.translation + direction * hit.distance;
+                i += 1;
+            }
+        }
+
+        let slide_velocity =
+            (slide_position - transform.translation).normalize() * velocity.normalize();
+        // velocity.0 = slide_velocity;
+    }
 }
 
 fn apply_gravity(
