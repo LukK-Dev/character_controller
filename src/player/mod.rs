@@ -2,7 +2,7 @@ use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind, prelude::*};
 use leafwing_input_manager::prelude::*;
 
-use crate::physics::{CollisionLayer, Grounded, KinematicCharacterController};
+use crate::physics::{CollisionLayer, DesiredVelocity, Grounded, KinematicCharacterController};
 
 const MOVE_AND_SLIDE_MAX_ITERATIONS: usize = 8;
 
@@ -102,7 +102,7 @@ fn movement(
             &Player,
             &ActionState<Action>,
             &mut Transform,
-            &mut LinearVelocity,
+            &mut DesiredVelocity,
         ),
         With<Grounded>,
     >,

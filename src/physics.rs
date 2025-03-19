@@ -10,11 +10,12 @@ impl Plugin for PhysicsPlugin {
         app.insert_resource(MoveAndSlideIterations(self.move_and_slide_iterations));
 
         app.add_systems(PreUpdate, (update_grounded_state, apply_gravity).chain());
+        app.add_systems(PostUpdate, move_and_slide);
 
-        let physics_schedule = app
-            .get_schedule_mut(PhysicsSchedule)
-            .expect("missing PhysicsSchedule (try adding the Avian PhysicsPlugins before adding this plugin)");
-        physics_schedule.add_systems(move_and_slide.before(PhysicsStepSet::First));
+        // let physics_schedule = app
+        // .get_schedule_mut(PhysicsSchedule)
+        //     .expect("missing PhysicsSchedule (try adding the Avian PhysicsPlugins before adding this plugin)");
+        // physics_schedule.add_systems(move_and_slide.before(PhysicsStepSet::First));
     }
 }
 
@@ -34,8 +35,11 @@ pub enum CollisionLayer {
     Terrain,
 }
 
+#[derive(Resource)]
+struct MoveAndSlideIterations(usize);
+
 #[derive(Component)]
-#[require(Transform, RigidBody(|| RigidBody::Kinematic), Collider)]
+#[require(DesiredVelocity, Transform, RigidBody(|| RigidBody::Kinematic), Collider)]
 pub struct KinematicCharacterController {
     gravity: f32,
     // maximum distance between collider and ground for the body to be considered grounded
@@ -54,8 +58,22 @@ impl Default for KinematicCharacterController {
     }
 }
 
-#[derive(Resource)]
-struct MoveAndSlideIterations(usize);
+#[derive(Default, Component)]
+pub struct DesiredVelocity(Vec3);
+
+impl std::ops::Deref for DesiredVelocity {
+    type Target = Vec3;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for DesiredVelocity {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 #[derive(Component)]
 pub struct Grounded;
@@ -64,54 +82,86 @@ fn move_and_slide(
     mut bodies: Query<(
         &KinematicCharacterController,
         &Collider,
+        &DesiredVelocity,
         &mut Transform,
-        &mut LinearVelocity,
     )>,
     spatial_query: SpatialQuery,
     iterations: Res<MoveAndSlideIterations>,
     time: Res<Time>,
+    mut gizmos: Gizmos,
 ) {
-    for (controller, collider, mut transform, mut velocity) in bodies.iter_mut() {
-        if velocity.is_nan() || velocity.length_squared() == 0.0 {
+    for (controller, collider, desired_velocity, mut transform) in bodies.iter_mut() {
+        if desired_velocity.is_nan() || desired_velocity.length_squared() == 0.0 {
             return;
         }
 
-        let mut distance_to_move = velocity.length() * time.delta_secs();
-        let mut direction = velocity.normalize();
+        // let mut distance_to_move = desired_velocity.length() * time.delta_secs();
+        let mut distance_to_move = desired_velocity.length();
+        let mut direction = desired_velocity.normalize();
         let mut slide_position = transform.translation;
         let mut i = 0;
-        while distance_to_move <= 0.0 && i < iterations.0 {
+        while
+        /* distance_to_move > 0.0 && */
+        i < iterations.0 {
             if let Some(hit) = spatial_query.cast_shape(
                 collider,
                 slide_position,
+                // TODO: should ideally be changed every iteration
+                // my character uses a capsule collider, for whom it wouldn't change anything
                 transform.rotation,
                 Dir3::new_unchecked(direction),
                 &ShapeCastConfig {
                     max_distance: distance_to_move,
                     ..Default::default()
                 },
+                // TODO: could be made generic (I won't)
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
             ) {
-                let movable_distance = hit
-                    .distance
-                    .clamp(0.0, velocity.length() - controller.collider_gap);
+                let movable_distance =
+                    hit.distance.clamp(0.0, distance_to_move) - controller.collider_gap;
                 distance_to_move -= movable_distance;
+
+                let _slide_pos = slide_position;
+                slide_position += direction * movable_distance;
+
+                gizmos.line(_slide_pos, slide_position, tailwind::GREEN_400);
+
+                gizmos.sphere(
+                    Isometry3d::from_translation(slide_position),
+                    0.5,
+                    tailwind::GREEN_400,
+                );
+
                 // project direction vector onto plane defined by hit normal
+                // TODO: find out why this does not work as i want it
                 direction =
                     (direction + hit.normal1 * hit.normal1.dot(direction).abs()).normalize();
-                slide_position = transform.translation + direction * hit.distance;
-                i += 1;
+                if direction.is_nan() {
+                    break;
+                }
+            } else {
+                slide_position = transform.translation + direction * distance_to_move;
+                distance_to_move = 0.0;
             }
+
+            i += 1;
         }
 
-        let slide_velocity =
-            (slide_position - transform.translation).normalize() * velocity.normalize();
+        transform.translation += desired_velocity.0 * time.delta_secs();
+
+        // transform.translation = slide_position;
+
+        // let slide_velocity =
+        //     (slide_position - transform.translation).normalize() * velocity.normalize();
         // velocity.0 = slide_velocity;
     }
 }
 
 fn apply_gravity(
-    mut controllers: Query<(&KinematicCharacterController, &mut LinearVelocity), Without<Grounded>>,
+    mut controllers: Query<
+        (&KinematicCharacterController, &mut DesiredVelocity),
+        Without<Grounded>,
+    >,
     time: Res<Time>,
 ) {
     for (controller, mut velocity) in controllers.iter_mut() {

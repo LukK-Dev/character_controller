@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use avian3d::prelude::*;
 use bevy::{
+    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     prelude::*,
     window::{PrimaryWindow, WindowMode},
 };
@@ -24,11 +25,15 @@ impl Plugin for GamePlugin {
         );
         app.add_plugins(PhysicsDebugPlugin::default());
         app.add_plugins(WorldInspectorPlugin::new());
+        app.add_plugins(FrameTimeDiagnosticsPlugin);
 
         app.add_plugins((PlayerPlugin, FlycamPlugin, PhysicsPlugin::default()));
 
         app.add_systems(Startup, setup);
-        app.add_systems(Update, (spawn_spheres, fullscreen_on_f11));
+        app.add_systems(
+            Update,
+            (spawn_spheres, fullscreen_on_f11, update_window_title),
+        );
     }
 }
 
@@ -104,6 +109,20 @@ fn fullscreen_on_f11(
                 WindowMode::Windowed => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
                 _ => WindowMode::Windowed,
             }
+        }
+    }
+}
+
+fn update_window_title(
+    diagnostics: Res<DiagnosticsStore>,
+    mut primary_window: Query<&mut Window, With<PrimaryWindow>>,
+) {
+    if let Some(fps_diagnostic) = diagnostics.get_measurement(&FrameTimeDiagnosticsPlugin::FPS) {
+        if let Ok(mut primary_window) = primary_window.get_single_mut() {
+            primary_window.title = format!(
+                "Character Controller - {} FPS",
+                fps_diagnostic.value.round()
+            );
         }
     }
 }
