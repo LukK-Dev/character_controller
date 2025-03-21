@@ -7,6 +7,12 @@ pub struct PhysicsPlugin {
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(
+            // PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
+            PhysicsPlugins::default(),
+        );
+        app.add_plugins(PhysicsDebugPlugin::default());
+
         app.insert_resource(MoveAndSlideIterations(self.move_and_slide_iterations));
 
         app.add_systems(PreUpdate, (update_grounded_state, apply_gravity).chain());
@@ -52,7 +58,8 @@ impl Default for KinematicCharacterController {
     fn default() -> Self {
         Self {
             gravity: 9.81,
-            grounded_max_distance: 0.01,
+            // TODO: RESET TO 0.01
+            grounded_max_distance: 0.1,
             collider_gap: 0.01,
         }
     }
@@ -90,70 +97,63 @@ fn move_and_slide(
     time: Res<Time>,
     mut gizmos: Gizmos,
 ) {
-    for (controller, collider, desired_velocity, mut transform) in bodies.iter_mut() {
-        if desired_velocity.is_nan() || desired_velocity.length_squared() == 0.0 {
-            return;
+    for (controller, collider, velocity, mut transform) in bodies.iter_mut() {
+        let mut distance_to_travel = velocity.length() * time.delta_secs();
+        if distance_to_travel.is_nan() || distance_to_travel == 0.0 {
+            continue;
         }
 
-        // let mut distance_to_move = desired_velocity.length() * time.delta_secs();
-        let mut distance_to_move = desired_velocity.length();
-        let mut direction = desired_velocity.normalize();
-        let mut slide_position = transform.translation;
+        let mut cast_position = transform.translation;
+        let mut cast_direction = velocity.normalize();
         let mut i = 0;
-        while
-        /* distance_to_move > 0.0 && */
-        i < iterations.0 {
+        while i < iterations.0 && distance_to_travel > 0.0 {
+            let last_cast_position = cast_position;
             if let Some(hit) = spatial_query.cast_shape(
                 collider,
-                slide_position,
+                cast_position,
                 // TODO: should ideally be changed every iteration
-                // my character uses a capsule collider, for whom it wouldn't change anything
+                // my character uses a capsule collider, for whom rotating around the y-axis wouldn't change anything
                 transform.rotation,
-                Dir3::new_unchecked(direction),
+                Dir3::new_unchecked(cast_direction),
                 &ShapeCastConfig {
-                    max_distance: distance_to_move,
+                    max_distance: distance_to_travel,
                     ..Default::default()
                 },
                 // TODO: could be made generic (I won't)
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
             ) {
                 let movable_distance =
-                    hit.distance.clamp(0.0, distance_to_move) - controller.collider_gap;
-                distance_to_move -= movable_distance;
-
-                let _slide_pos = slide_position;
-                slide_position += direction * movable_distance;
-
-                gizmos.line(_slide_pos, slide_position, tailwind::GREEN_400);
-
-                gizmos.sphere(
-                    Isometry3d::from_translation(slide_position),
-                    0.5,
+                    (hit.distance - controller.collider_gap).min(distance_to_travel);
+                distance_to_travel -= movable_distance;
+                cast_position += cast_direction * movable_distance;
+                gizmos.primitive_3d(
+                    &Capsule3d::new(0.5, 1.0),
+                    Isometry3d::new(cast_position, transform.rotation),
                     tailwind::GREEN_400,
                 );
+                gizmos.arrow(last_cast_position, cast_position, tailwind::RED_400);
 
                 // project direction vector onto plane defined by hit normal
-                // TODO: find out why this does not work as i want it
-                direction =
-                    (direction + hit.normal1 * hit.normal1.dot(direction).abs()).normalize();
-                if direction.is_nan() {
-                    break;
+                let new_cast_direction =
+                    (cast_direction - hit.normal1 * hit.normal1.dot(cast_direction)).normalize();
+                if !new_cast_direction.is_nan() {
+                    cast_direction = new_cast_direction;
                 }
             } else {
-                slide_position = transform.translation + direction * distance_to_move;
-                distance_to_move = 0.0;
+                cast_position += cast_direction * distance_to_travel;
+                distance_to_travel = 0.0;
+                gizmos.primitive_3d(
+                    &Capsule3d::new(0.5, 1.0),
+                    Isometry3d::new(cast_position, transform.rotation),
+                    tailwind::GREEN_400,
+                );
+                gizmos.arrow(last_cast_position, cast_position, tailwind::RED_400);
             }
 
             i += 1;
         }
 
-        transform.translation += desired_velocity.0 * time.delta_secs();
-
-        // transform.translation = slide_position;
-
-        // let slide_velocity =
-        //     (slide_position - transform.translation).normalize() * velocity.normalize();
-        // velocity.0 = slide_velocity;
+        transform.translation = cast_position;
     }
 }
 

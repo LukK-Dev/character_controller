@@ -20,10 +20,6 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(
-            PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
-        );
-        app.add_plugins(PhysicsDebugPlugin::default());
         app.add_plugins(WorldInspectorPlugin::new());
         app.add_plugins(FrameTimeDiagnosticsPlugin);
 

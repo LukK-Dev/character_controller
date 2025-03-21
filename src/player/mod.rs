@@ -62,8 +62,8 @@ pub struct SpawnPlayer {
 fn on_spawn_player(
     trigger: Trigger<SpawnPlayer>,
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    // mut meshes: ResMut<Assets<Mesh>>,
+    // mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let transform = trigger.event().transform;
 
@@ -77,11 +77,11 @@ fn on_spawn_player(
         .with(Action::Jump, KeyCode::Space)
         .with(Action::Sprint, GamepadButton::South)
         .with(Action::Sprint, KeyCode::ShiftLeft);
-    let mesh = meshes.add(Capsule3d::new(0.5, 1.0));
-    let material = materials.add(StandardMaterial {
-        base_color: tailwind::RED_400.into(),
-        ..Default::default()
-    });
+    // let mesh = meshes.add(Capsule3d::new(0.5, 1.0));
+    // let material = materials.add(StandardMaterial {
+    //     base_color: tailwind::RED_400.into(),
+    //     ..Default::default()
+    // });
 
     commands.spawn((
         Name::new("Player"),
@@ -90,8 +90,8 @@ fn on_spawn_player(
         KinematicCharacterController::default(),
         Collider::capsule(0.5, 1.0),
         CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
-        Mesh3d(mesh.clone()),
-        MeshMaterial3d(material.clone()),
+        // Mesh3d(mesh.clone()),
+        // MeshMaterial3d(material.clone()),
         transform,
     ));
 }
