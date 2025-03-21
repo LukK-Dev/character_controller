@@ -11,7 +11,7 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use crate::{
     flycam::{Flycam, FlycamPlugin},
     physics::{CollisionLayer, PhysicsPlugin},
-    player::{PlayerCamera, PlayerPlugin, SpawnPlayer},
+    player::{PlayerPlugin, SpawnPlayer},
 };
 
 const PLAYGROUND_SCENE_PATH: &str = "./playground.glb";
@@ -34,11 +34,11 @@ impl Plugin for GamePlugin {
 }
 
 fn setup(mut commands: Commands, asset_server: ResMut<AssetServer>) {
-    commands.spawn((
-        Flycam::default(),
-        PlayerCamera,
-        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
-    ));
+    // commands.spawn((
+    //     Flycam::default(),
+    //     PlayerCamera,
+    //     Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
+    // ));
 
     commands.insert_resource(AmbientLight {
         brightness: 400.0,

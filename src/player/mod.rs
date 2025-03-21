@@ -1,8 +1,10 @@
-use avian3d::prelude::*;
-use bevy::{color::palettes::tailwind, prelude::*};
-use leafwing_input_manager::prelude::*;
+mod camera;
 
 use crate::physics::{CollisionLayer, DesiredVelocity, Grounded, KinematicCharacterController};
+use avian3d::prelude::*;
+use bevy::{color::palettes::tailwind, prelude::*};
+use camera::{PlayerCamera, PlayerCameraPlugin};
+use leafwing_input_manager::prelude::*;
 
 const MOVE_AND_SLIDE_MAX_ITERATIONS: usize = 8;
 
@@ -11,6 +13,8 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<Action>::default());
+
+        app.add_plugins(PlayerCameraPlugin);
 
         app.add_observer(on_spawn_player);
 
@@ -24,11 +28,10 @@ enum Action {
     Move,
     Jump,
     Sprint,
-}
 
-#[derive(Component)]
-#[require(Camera3d)]
-pub struct PlayerCamera;
+    #[actionlike(DualAxis)]
+    CameraOrbit,
+}
 
 #[derive(Component)]
 #[require(KinematicCharacterController)]
@@ -76,7 +79,12 @@ fn on_spawn_player(
         .with(Action::Jump, GamepadButton::East)
         .with(Action::Jump, KeyCode::Space)
         .with(Action::Sprint, GamepadButton::South)
-        .with(Action::Sprint, KeyCode::ShiftLeft);
+        .with(Action::Sprint, KeyCode::ShiftLeft)
+        .with_dual_axis(
+            Action::CameraOrbit,
+            GamepadStick::RIGHT.with_deadzone_symmetric(0.2),
+        );
+
     // let mesh = meshes.add(Capsule3d::new(0.5, 1.0));
     // let material = materials.add(StandardMaterial {
     //     base_color: tailwind::RED_400.into(),
@@ -93,6 +101,12 @@ fn on_spawn_player(
         // Mesh3d(mesh.clone()),
         // MeshMaterial3d(material.clone()),
         transform,
+    ));
+
+    // TODO: move to an appropriate spot
+    commands.spawn((
+        PlayerCamera::default(),
+        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
     ));
 }
 

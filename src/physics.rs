@@ -42,7 +42,7 @@ pub enum CollisionLayer {
 }
 
 #[derive(Resource)]
-struct MoveAndSlideIterations(usize);
+pub struct MoveAndSlideIterations(usize);
 
 #[derive(Component)]
 #[require(DesiredVelocity, Transform, RigidBody(|| RigidBody::Kinematic), Collider)]
@@ -85,7 +85,7 @@ impl std::ops::DerefMut for DesiredVelocity {
 #[derive(Component)]
 pub struct Grounded;
 
-fn move_and_slide(
+pub fn move_and_slide(
     mut bodies: Query<(
         &KinematicCharacterController,
         &Collider,
