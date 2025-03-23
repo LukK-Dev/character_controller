@@ -9,7 +9,7 @@ use bevy::{
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 use crate::{
-    flycam::{Flycam, FlycamPlugin},
+    flycam::FlycamPlugin,
     physics::{CollisionLayer, PhysicsPlugin},
     player::{PlayerPlugin, SpawnPlayer},
 };

@@ -11,11 +11,14 @@ impl Plugin for PhysicsPlugin {
             // PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
             PhysicsPlugins::default(),
         );
-        app.add_plugins(PhysicsDebugPlugin::default());
+        // app.add_plugins(PhysicsDebugPlugin::default());
 
         app.insert_resource(MoveAndSlideIterations(self.move_and_slide_iterations));
 
-        app.add_systems(PreUpdate, (update_grounded_state, apply_gravity).chain());
+        app.add_systems(
+            PreUpdate,
+            (update_grounded_state, apply_gravity, unstuck).chain(),
+        );
         app.add_systems(PostUpdate, move_and_slide);
 
         // let physics_schedule = app
@@ -58,8 +61,7 @@ impl Default for KinematicCharacterController {
     fn default() -> Self {
         Self {
             gravity: 9.81,
-            // TODO: RESET TO 0.01
-            grounded_max_distance: 0.1,
+            grounded_max_distance: 0.01,
             collider_gap: 0.01,
         }
     }
@@ -134,8 +136,9 @@ pub fn move_and_slide(
                 gizmos.arrow(last_cast_position, cast_position, tailwind::RED_400);
 
                 // project direction vector onto plane defined by hit normal
-                let new_cast_direction =
-                    (cast_direction - hit.normal1 * hit.normal1.dot(cast_direction)).normalize();
+                let new_cast_direction = cast_direction
+                    .reject_from_normalized(hit.normal1)
+                    .normalize();
                 if !new_cast_direction.is_nan() {
                     cast_direction = new_cast_direction;
                 }
@@ -154,6 +157,17 @@ pub fn move_and_slide(
         }
 
         transform.translation = cast_position;
+    }
+}
+
+fn unstuck(
+    mut controllers: Query<(Entity, &mut Transform), With<KinematicCharacterController>>,
+    collisions: Res<Collisions>,
+) {
+    for (controller_entity, mut controller_transform) in controllers.iter_mut() {
+        for collision in collisions.collisions_with_entity(controller_entity) {
+            for manifold in collision.manifolds.iter() {}
+        }
     }
 }
 
