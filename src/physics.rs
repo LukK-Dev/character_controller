@@ -17,6 +17,7 @@ impl Plugin for PhysicsPlugin {
 
         app.add_systems(
             PreUpdate,
+            // (update_grounded_state, apply_gravity, snap_to_floor, unstuck).chain(),
             (update_grounded_state, apply_gravity, unstuck).chain(),
         );
         app.add_systems(PostUpdate, move_and_slide);
@@ -50,6 +51,9 @@ pub struct MoveAndSlideIterations(usize);
 #[derive(Component)]
 #[require(DesiredVelocity, Transform, RigidBody(|| RigidBody::Kinematic), Collider)]
 pub struct KinematicCharacterController {
+    snap_to_floor: bool,
+    // maximum distance to floor, at which snapping can occur
+    snap_to_floor_max_distance: f32,
     gravity: f32,
     // maximum distance between collider and ground for the body to be considered grounded
     grounded_max_distance: f32,
@@ -60,6 +64,8 @@ pub struct KinematicCharacterController {
 impl Default for KinematicCharacterController {
     fn default() -> Self {
         Self {
+            snap_to_floor: true,
+            snap_to_floor_max_distance: 0.1,
             gravity: 9.81,
             grounded_max_distance: 0.01,
             collider_gap: 0.01,
@@ -136,10 +142,16 @@ pub fn move_and_slide(
                 gizmos.arrow(last_cast_position, cast_position, tailwind::RED_400);
 
                 // project direction vector onto plane defined by hit normal
-                let new_cast_direction = cast_direction
+                let mut new_cast_direction = cast_direction
                     .reject_from_normalized(hit.normal1)
                     .normalize();
                 if !new_cast_direction.is_nan() {
+                    // treat sloped ceilings as walls
+                    if new_cast_direction.y < 0.0 {
+                        new_cast_direction.y = 0.0;
+                        new_cast_direction = new_cast_direction.normalize();
+                    }
+
                     cast_direction = new_cast_direction;
                 }
             } else {
@@ -160,15 +172,67 @@ pub fn move_and_slide(
     }
 }
 
+fn snap_to_floor(
+    mut commands: Commands,
+    mut controllers: Query<
+        (
+            Entity,
+            &KinematicCharacterController,
+            &Collider,
+            &mut Transform,
+            &mut DesiredVelocity,
+        ),
+        Without<Grounded>,
+    >,
+    spatial_query: SpatialQuery,
+) {
+    // for (entity, controller, collider, mut transform, mut velocity) in controllers.iter_mut() {
+    //     if !controller.snap_to_floor {
+    //         continue;
+    //     }
+    //
+    //     if let Some(hit) = spatial_query.cast_shape(
+    //         collider,
+    //         transform.translation,
+    //         transform.rotation,
+    //         Dir3::new_unchecked(-Vec3::Y),
+    //         &ShapeCastConfig {
+    //             max_distance: controller.snap_to_floor_max_distance,
+    //             ..Default::default()
+    //         },
+    //         &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+    //     ) {
+    //         transform.translation.y -= hit.distance + controller.collider_gap;
+    //
+    //         velocity.y = 0.0;
+    //
+    //         // commands.entity(entity).insert(Grounded);
+    //     }
+    // }
+}
+
+// inspired by: https://github.com/Jondolf/avian/blob/main/crates/avian3d/examples/kinematic_character_3d/plugin.rs
 fn unstuck(
-    mut controllers: Query<(Entity, &mut Transform), With<KinematicCharacterController>>,
+    mut controllers: Query<(Entity, &KinematicCharacterController, &mut Transform)>,
     collisions: Res<Collisions>,
 ) {
-    for (controller_entity, mut controller_transform) in controllers.iter_mut() {
-        for collision in collisions.collisions_with_entity(controller_entity) {
-            for manifold in collision.manifolds.iter() {}
-        }
-    }
+    // for (controller_entity, controller, mut controller_transform) in controllers.iter_mut() {
+    //     for collision in collisions.collisions_with_entity(controller_entity) {
+    //         let is_first = collision.entity1 == controller_entity;
+    //         for manifold in collision.manifolds.iter() {
+    //             if let Some(contact) = manifold.find_deepest_contact() {
+    //                 let mut normal =
+    //                     contact.global_normal1(&Rotation(controller_transform.rotation));
+    //                 if is_first {
+    //                     normal = -normal;
+    //                 }
+    //
+    //                 controller_transform.translation -=
+    //                     normal * (contact.penetration + controller.collider_gap);
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 fn apply_gravity(
