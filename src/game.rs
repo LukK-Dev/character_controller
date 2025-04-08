@@ -4,7 +4,7 @@ use avian3d::prelude::*;
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     prelude::*,
-    window::{PrimaryWindow, WindowMode},
+    window::{CursorGrabMode, PrimaryWindow, WindowMode},
 };
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
@@ -20,6 +20,7 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(DefaultPlugins);
         app.add_plugins(WorldInspectorPlugin::new());
         app.add_plugins(FrameTimeDiagnosticsPlugin);
 
@@ -107,6 +108,12 @@ fn fullscreen_on_f11(
             }
         }
     }
+}
+
+fn _capture_cursor(primary_window: Single<&mut Window, With<PrimaryWindow>>) {
+    let mut primary_window = primary_window.into_inner();
+    primary_window.cursor_options.grab_mode = CursorGrabMode::Locked;
+    primary_window.cursor_options.visible = false;
 }
 
 fn update_window_title(
