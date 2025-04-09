@@ -36,8 +36,7 @@ impl Plugin for GamePlugin {
 
 fn setup(mut commands: Commands, asset_server: ResMut<AssetServer>) {
     // commands.spawn((
-    //     Flycam::default(),
-    //     PlayerCamera,
+    //     crate::flycam::Flycam::default(),
     //     Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
     // ));
 

@@ -15,17 +15,23 @@ impl Plugin for PhysicsPlugin {
 
         app.insert_resource(MoveAndSlideIterations(self.move_and_slide_iterations));
 
-        app.add_systems(
-            PreUpdate,
-            // (update_grounded_state, apply_gravity, snap_to_floor, unstuck).chain(),
-            (update_grounded_state, apply_gravity, unstuck).chain(),
-        );
-        app.add_systems(PostUpdate, move_and_slide);
+        // app.add_systems(
+        //     PreUpdate,
+        //     // (update_grounded_state, apply_gravity, snap_to_floor, unstuck).chain(),
+        //     (update_grounded_state, apply_gravity, unstuck).chain(),
+        // );
+        // app.add_systems(FixedPostUpdate, (move_and_slide, update_grounded_state));
 
-        // let physics_schedule = app
-        // .get_schedule_mut(PhysicsSchedule)
-        //     .expect("missing PhysicsSchedule (try adding the Avian PhysicsPlugins before adding this plugin)");
-        // physics_schedule.add_systems(move_and_slide.before(PhysicsStepSet::First));
+        app.add_systems(Update, move_and_slide_debug_visualization);
+
+        let physics_schedule = app
+        .get_schedule_mut(PhysicsSchedule)
+            .expect("missing PhysicsSchedule (try adding the Avian PhysicsPlugins before adding this plugin)");
+        physics_schedule.add_systems(
+            (move_and_slide, update_grounded_state)
+                .chain()
+                .in_set(PhysicsStepSet::First),
+        );
     }
 }
 
@@ -49,34 +55,35 @@ pub enum CollisionLayer {
 pub struct MoveAndSlideIterations(usize);
 
 #[derive(Component)]
-#[require(DesiredVelocity, Transform, RigidBody(|| RigidBody::Kinematic), Collider)]
-pub struct KinematicCharacterController {
-    snap_to_floor: bool,
-    // maximum distance to floor, at which snapping can occur
-    snap_to_floor_max_distance: f32,
-    gravity: f32,
-    // maximum distance between collider and ground for the body to be considered grounded
+#[require(Velocity, Transform, RigidBody(|| RigidBody::Kinematic), Collider)]
+pub struct KinematicCharacterBody {
+    /// maximum distance between collider and ground for the body to be considered grounded
     grounded_max_distance: f32,
-    // gap between collider of character and environment to prevent getting stuck
+    /// gap between collider of body and environment to prevent getting stuck
     collider_gap: f32,
+    /// angle at which the body will slide off of slopes
+    max_terrain_slope: f32,
+    snap_to_floor: bool,
+    /// maximum distance to floor, at which snapping can occur
+    snap_to_floor_max_distance: f32,
 }
 
-impl Default for KinematicCharacterController {
+impl Default for KinematicCharacterBody {
     fn default() -> Self {
         Self {
+            grounded_max_distance: 0.1,
+            collider_gap: 0.1,
+            max_terrain_slope: 45f32.to_radians(),
             snap_to_floor: true,
             snap_to_floor_max_distance: 0.1,
-            gravity: 9.81,
-            grounded_max_distance: 0.01,
-            collider_gap: 0.01,
         }
     }
 }
 
-#[derive(Default, Component)]
-pub struct DesiredVelocity(Vec3);
+#[derive(Debug, Default, Component)]
+pub struct Velocity(Vec3);
 
-impl std::ops::Deref for DesiredVelocity {
+impl std::ops::Deref for Velocity {
     type Target = Vec3;
 
     fn deref(&self) -> &Self::Target {
@@ -84,7 +91,7 @@ impl std::ops::Deref for DesiredVelocity {
     }
 }
 
-impl std::ops::DerefMut for DesiredVelocity {
+impl std::ops::DerefMut for Velocity {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -95,17 +102,110 @@ pub struct Grounded;
 
 pub fn move_and_slide(
     mut bodies: Query<(
-        &KinematicCharacterController,
+        &KinematicCharacterBody,
         &Collider,
-        &DesiredVelocity,
+        &Velocity,
         &mut Transform,
     )>,
     spatial_query: SpatialQuery,
     iterations: Res<MoveAndSlideIterations>,
     time: Res<Time>,
-    mut gizmos: Gizmos,
 ) {
-    for (controller, collider, velocity, mut transform) in bodies.iter_mut() {
+    for (body, collider, velocity, mut transform) in bodies.iter_mut() {
+        let distance_to_move = velocity.length() * time.delta_secs();
+        if distance_to_move == 0.0 {
+            continue;
+        }
+
+        if let Some(hit) = spatial_query.cast_shape(
+            collider,
+            transform.translation,
+            transform.rotation,
+            Dir3::new_unchecked(velocity.normalize()),
+            &ShapeCastConfig {
+                max_distance: distance_to_move,
+                ..Default::default()
+            },
+            &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+        ) {
+            let movable_distance = hit.distance.min(distance_to_move) - body.collider_gap;
+            transform.translation += velocity.normalize() * movable_distance;
+        } else {
+            transform.translation += velocity.0 * time.delta_secs();
+        }
+    }
+}
+
+pub fn move_and_slide_debug_visualization(
+    mut bodies: Query<(&KinematicCharacterBody, &Collider, &Velocity, &Transform)>,
+    spatial_query: SpatialQuery,
+    iterations: Res<MoveAndSlideIterations>,
+    mut gizmos: Gizmos,
+    mut mouse_wheel_events: EventReader<bevy::input::mouse::MouseWheel>,
+    mut distance_to_move: Local<f32>,
+) {
+    for event in mouse_wheel_events.read() {
+        *distance_to_move += event.y * 0.25;
+    }
+    info!("{:?}", distance_to_move);
+
+    for (body, collider, velocity, transform) in bodies.iter_mut() {
+        if velocity.length_squared() == 0.0 {
+            continue;
+        }
+
+        let direction = velocity.normalize();
+        if let Some(hit) = spatial_query.cast_shape(
+            collider,
+            transform.translation,
+            transform.rotation,
+            Dir3::new_unchecked(direction),
+            &ShapeCastConfig {
+                max_distance: *distance_to_move,
+                ..Default::default()
+            },
+            &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+        ) {
+            let hit_position = transform.translation + direction * hit.distance;
+            gizmos.line(transform.translation, hit_position, tailwind::RED_400);
+            gizmos.primitive_3d(
+                &Capsule3d::default(),
+                Isometry3d {
+                    rotation: transform.rotation,
+                    translation: hit_position.into(),
+                },
+                tailwind::GREEN_400,
+            );
+
+            // let movable_distance = hit.distance.min(*distance_to_move) - body.collider_gap;
+            // transform.translation += velocity.normalize() * movable_distance;
+        } else {
+            let new_position = transform.translation + direction * *distance_to_move;
+            gizmos.line(transform.translation, new_position, tailwind::RED_400);
+            gizmos.primitive_3d(
+                &Capsule3d::default(),
+                Isometry3d {
+                    rotation: transform.rotation,
+                    translation: new_position.into(),
+                },
+                tailwind::GREEN_400,
+            );
+        }
+    }
+}
+
+pub fn _move_and_slide(
+    mut bodies: Query<(
+        &KinematicCharacterBody,
+        &Collider,
+        &Velocity,
+        &mut Transform,
+    )>,
+    spatial_query: SpatialQuery,
+    iterations: Res<MoveAndSlideIterations>,
+    time: Res<Time>,
+) {
+    for (body, collider, velocity, mut transform) in bodies.iter_mut() {
         let mut distance_to_travel = velocity.length() * time.delta_secs();
         if distance_to_travel.is_nan() || distance_to_travel == 0.0 {
             continue;
@@ -115,7 +215,6 @@ pub fn move_and_slide(
         let mut cast_direction = velocity.normalize();
         let mut i = 0;
         while i < iterations.0 && distance_to_travel > 0.0 {
-            let last_cast_position = cast_position;
             if let Some(hit) = spatial_query.cast_shape(
                 collider,
                 cast_position,
@@ -130,16 +229,9 @@ pub fn move_and_slide(
                 // TODO: could be made generic (I won't)
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
             ) {
-                let movable_distance =
-                    (hit.distance - controller.collider_gap).min(distance_to_travel);
+                let movable_distance = (hit.distance - body.collider_gap).min(distance_to_travel);
                 distance_to_travel -= movable_distance;
                 cast_position += cast_direction * movable_distance;
-                gizmos.primitive_3d(
-                    &Capsule3d::new(0.5, 1.0),
-                    Isometry3d::new(cast_position, transform.rotation),
-                    tailwind::GREEN_400,
-                );
-                gizmos.arrow(last_cast_position, cast_position, tailwind::RED_400);
 
                 // project direction vector onto plane defined by hit normal
                 let mut new_cast_direction = cast_direction
@@ -157,12 +249,6 @@ pub fn move_and_slide(
             } else {
                 cast_position += cast_direction * distance_to_travel;
                 distance_to_travel = 0.0;
-                gizmos.primitive_3d(
-                    &Capsule3d::new(0.5, 1.0),
-                    Isometry3d::new(cast_position, transform.rotation),
-                    tailwind::GREEN_400,
-                );
-                gizmos.arrow(last_cast_position, cast_position, tailwind::RED_400);
             }
 
             i += 1;
@@ -172,84 +258,9 @@ pub fn move_and_slide(
     }
 }
 
-fn snap_to_floor(
-    mut commands: Commands,
-    mut controllers: Query<
-        (
-            Entity,
-            &KinematicCharacterController,
-            &Collider,
-            &mut Transform,
-            &mut DesiredVelocity,
-        ),
-        Without<Grounded>,
-    >,
-    spatial_query: SpatialQuery,
-) {
-    // for (entity, controller, collider, mut transform, mut velocity) in controllers.iter_mut() {
-    //     if !controller.snap_to_floor {
-    //         continue;
-    //     }
-    //
-    //     if let Some(hit) = spatial_query.cast_shape(
-    //         collider,
-    //         transform.translation,
-    //         transform.rotation,
-    //         Dir3::new_unchecked(-Vec3::Y),
-    //         &ShapeCastConfig {
-    //             max_distance: controller.snap_to_floor_max_distance,
-    //             ..Default::default()
-    //         },
-    //         &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
-    //     ) {
-    //         transform.translation.y -= hit.distance + controller.collider_gap;
-    //
-    //         velocity.y = 0.0;
-    //
-    //         // commands.entity(entity).insert(Grounded);
-    //     }
-    // }
-}
-
-// inspired by: https://github.com/Jondolf/avian/blob/main/crates/avian3d/examples/kinematic_character_3d/plugin.rs
-fn unstuck(
-    mut controllers: Query<(Entity, &KinematicCharacterController, &mut Transform)>,
-    collisions: Res<Collisions>,
-) {
-    // for (controller_entity, controller, mut controller_transform) in controllers.iter_mut() {
-    //     for collision in collisions.collisions_with_entity(controller_entity) {
-    //         let is_first = collision.entity1 == controller_entity;
-    //         for manifold in collision.manifolds.iter() {
-    //             if let Some(contact) = manifold.find_deepest_contact() {
-    //                 let mut normal =
-    //                     contact.global_normal1(&Rotation(controller_transform.rotation));
-    //                 if is_first {
-    //                     normal = -normal;
-    //                 }
-    //
-    //                 controller_transform.translation -=
-    //                     normal * (contact.penetration + controller.collider_gap);
-    //             }
-    //         }
-    //     }
-    // }
-}
-
-fn apply_gravity(
-    mut controllers: Query<
-        (&KinematicCharacterController, &mut DesiredVelocity),
-        Without<Grounded>,
-    >,
-    time: Res<Time>,
-) {
-    for (controller, mut velocity) in controllers.iter_mut() {
-        velocity.y -= controller.gravity * time.delta_secs();
-    }
-}
-
 fn update_grounded_state(
     mut commands: Commands,
-    controllers: Query<(Entity, &KinematicCharacterController, &Transform, &Collider)>,
+    controllers: Query<(Entity, &KinematicCharacterBody, &Transform, &Collider)>,
     spatial_query: SpatialQuery,
 ) {
     for (entity, controller, transform, collider) in controllers.iter() {

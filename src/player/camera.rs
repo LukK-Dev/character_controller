@@ -75,11 +75,11 @@ fn follow_player(
 
 fn prevent_blindness(
     mut camera: Query<&mut Transform, With<PlayerCamera>>,
-    player: Query<(&Transform, &Collider), (With<Player>, Without<PlayerCamera>)>,
+    player: Query<&Transform, (With<Player>, Without<PlayerCamera>)>,
     spatial_query: SpatialQuery,
 ) {
     if let Ok(mut camera_transform) = camera.get_single_mut() {
-        if let Ok((player_transform, player_collider)) = player.get_single() {
+        if let Ok(player_transform) = player.get_single() {
             let direction = camera_transform.translation - player_transform.translation;
             let distance = direction.length();
 

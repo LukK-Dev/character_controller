@@ -1,12 +1,10 @@
 mod camera;
 
-use crate::physics::{CollisionLayer, DesiredVelocity, Grounded, KinematicCharacterController};
+use crate::physics::{CollisionLayer, Grounded, KinematicCharacterBody, Velocity};
 use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind, prelude::*};
 use camera::{PlayerCamera, PlayerCameraPlugin};
 use leafwing_input_manager::prelude::*;
-
-const MOVE_AND_SLIDE_MAX_ITERATIONS: usize = 8;
 
 pub struct PlayerPlugin;
 
@@ -18,7 +16,8 @@ impl Plugin for PlayerPlugin {
 
         app.add_observer(on_spawn_player);
 
-        app.add_systems(Update, movement);
+        app.add_systems(Update, (movement, apply_gravity));
+        // app.add_systems(Update, apply_gravity);
     }
 }
 
@@ -34,8 +33,9 @@ enum Action {
 }
 
 #[derive(Component)]
-#[require(KinematicCharacterController)]
+#[require(KinematicCharacterBody)]
 pub struct Player {
+    gravity: f32,
     acceleration: f32,
     max_speed: f32,
     sprint_acceleration: f32,
@@ -47,6 +47,7 @@ pub struct Player {
 impl Default for Player {
     fn default() -> Self {
         Self {
+            gravity: 9.81,
             acceleration: 20.0,
             max_speed: 5.0,
             sprint_acceleration: 30.0,
@@ -96,7 +97,7 @@ fn on_spawn_player(
         Name::new("Player"),
         Player::default(),
         InputManagerBundle::with_map(input_map),
-        KinematicCharacterController::default(),
+        KinematicCharacterBody::default(),
         Collider::capsule(0.5, 1.0),
         CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
         Mesh3d(mesh.clone()),
@@ -113,26 +114,14 @@ fn on_spawn_player(
 
 fn movement(
     mut player: Query<
-        (
-            &Player,
-            &ActionState<Action>,
-            &mut Transform,
-            &mut DesiredVelocity,
-        ),
+        (&Player, &ActionState<Action>, &mut Transform, &mut Velocity),
         With<Grounded>,
     >,
     player_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
     time: Res<Time>,
-    mut gizmos: Gizmos,
 ) {
     if let Ok((player, input, mut transform, mut velocity)) = player.get_single_mut() {
-        gizmos.arrow(
-            transform.translation,
-            transform.translation + transform.forward().as_vec3() * 2.0,
-            tailwind::BLUE_400,
-        );
-
-        // stop player from falling through the floor
+        // reset vertical velocity
         velocity.y = 0.0;
 
         let mut input_direction = input.clamped_axis_pair(&Action::Move).normalize_or_zero();
@@ -176,5 +165,11 @@ fn movement(
             velocity.x = decelerated_velocity.x;
             velocity.z = decelerated_velocity.y;
         }
+    }
+}
+
+fn apply_gravity(mut player: Query<(&Player, &mut Velocity), Without<Grounded>>, time: Res<Time>) {
+    if let Ok((player, mut velocity)) = player.get_single_mut() {
+        velocity.y -= player.gravity * time.delta_secs();
     }
 }
