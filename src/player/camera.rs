@@ -90,7 +90,6 @@ fn prevent_blindness(
 
             let direction = direction / distance;
             if let Some(hit) = spatial_query.cast_shape(
-                // player_collider,
                 &Collider::sphere(0.25),
                 player_transform.translation,
                 player_transform.rotation,

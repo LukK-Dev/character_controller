@@ -16,7 +16,7 @@ impl Plugin for PlayerPlugin {
 
         app.add_observer(on_spawn_player);
 
-        app.add_systems(Update, (movement, apply_gravity));
+        app.add_systems(Update, (grounded_movement, apply_gravity));
         // app.add_systems(Update, apply_gravity);
     }
 }
@@ -53,7 +53,7 @@ impl Default for Player {
             sprint_acceleration: 30.0,
             sprint_max_speed: 7.5,
             grounded_deceleration: 30.0,
-            jump_impulse: 100.0,
+            jump_impulse: 10.0,
         }
     }
 }
@@ -108,11 +108,12 @@ fn on_spawn_player(
     // TODO: move to an appropriate spot
     commands.spawn((
         PlayerCamera::default(),
+        bevy::core_pipeline::smaa::Smaa::default(),
         Transform::from_xyz(0.0, 7.5, 10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
     ));
 }
 
-fn movement(
+fn grounded_movement(
     mut player: Query<
         (&Player, &ActionState<Action>, &mut Transform, &mut Velocity),
         With<Grounded>,
@@ -121,8 +122,9 @@ fn movement(
     time: Res<Time>,
 ) {
     if let Ok((player, input, mut transform, mut velocity)) = player.get_single_mut() {
-        // reset vertical velocity
-        velocity.y = 0.0;
+        if input.just_pressed(&Action::Jump) {
+            velocity.y = player.jump_impulse;
+        }
 
         let mut input_direction = input.clamped_axis_pair(&Action::Move).normalize_or_zero();
         input_direction.y = -input_direction.y;
@@ -141,7 +143,7 @@ fn movement(
                 input_direction = Mat2::from_angle(-yaw) * input_direction;
             }
 
-            // movement
+            // basic horizontal movement
             let mut acceleration = player.acceleration;
             let mut max_speed = player.max_speed;
             if input.pressed(&Action::Sprint) {

@@ -11,7 +11,7 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use crate::{
     flycam::FlycamPlugin,
     physics::{CollisionLayer, PhysicsPlugin},
-    player::{PlayerPlugin, SpawnPlayer},
+    player::{Player, PlayerPlugin, SpawnPlayer},
 };
 
 const PLAYGROUND_SCENE_PATH: &str = "./playground.glb";
@@ -29,7 +29,12 @@ impl Plugin for GamePlugin {
         app.add_systems(Startup, setup);
         app.add_systems(
             Update,
-            (spawn_spheres, fullscreen_on_f11, update_window_title),
+            (
+                spawn_spheres,
+                fullscreen_on_f11,
+                reset_player,
+                update_window_title,
+            ),
         );
     }
 }
@@ -41,7 +46,7 @@ fn setup(mut commands: Commands, asset_server: ResMut<AssetServer>) {
     // ));
 
     commands.insert_resource(AmbientLight {
-        brightness: 400.0,
+        brightness: 900.0,
         ..Default::default()
     });
     commands.spawn((
@@ -105,6 +110,18 @@ fn fullscreen_on_f11(
                 WindowMode::Windowed => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
                 _ => WindowMode::Windowed,
             }
+        }
+    }
+}
+
+fn reset_player(
+    mut player: Query<(&mut Transform, &mut crate::physics::Velocity), With<Player>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+) {
+    if keyboard.just_pressed(KeyCode::KeyR) {
+        if let Ok((mut transform, mut velocity)) = player.get_single_mut() {
+            transform.translation = Vec3::ZERO.with_y(5.0);
+            velocity.0 = Vec3::ZERO;
         }
     }
 }
