@@ -1,10 +1,12 @@
 mod camera;
+pub mod types;
 
 use crate::physics::{CollisionLayer, Grounded, KinematicCharacterBody, Velocity};
 use avian3d::prelude::*;
-use bevy::{color::palettes::tailwind, prelude::*};
+use bevy::prelude::*;
 use camera::{PlayerCamera, PlayerCameraPlugin};
 use leafwing_input_manager::prelude::*;
+use types::{Action, Player, PlayerModel};
 
 pub struct PlayerPlugin;
 
@@ -16,46 +18,15 @@ impl Plugin for PlayerPlugin {
 
         app.add_observer(on_spawn_player);
 
+        app.add_systems(Startup, setup);
         app.add_systems(Update, (grounded_movement, apply_gravity));
-        // app.add_systems(Update, apply_gravity);
     }
 }
 
-#[derive(Actionlike, PartialEq, Eq, Clone, Copy, Hash, Debug, Reflect)]
-enum Action {
-    #[actionlike(DualAxis)]
-    Move,
-    Jump,
-    Sprint,
-
-    #[actionlike(DualAxis)]
-    CameraOrbit,
-}
-
-#[derive(Component)]
-#[require(KinematicCharacterBody)]
-pub struct Player {
-    gravity: f32,
-    acceleration: f32,
-    max_speed: f32,
-    sprint_acceleration: f32,
-    sprint_max_speed: f32,
-    grounded_deceleration: f32,
-    jump_impulse: f32,
-}
-
-impl Default for Player {
-    fn default() -> Self {
-        Self {
-            gravity: 9.81,
-            acceleration: 20.0,
-            max_speed: 5.0,
-            sprint_acceleration: 30.0,
-            sprint_max_speed: 7.5,
-            grounded_deceleration: 30.0,
-            jump_impulse: 10.0,
-        }
-    }
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let player_model: Handle<Scene> =
+        asset_server.load(GltfAssetLabel::Scene(0).from_asset("./models/player/player.glb"));
+    commands.insert_resource(PlayerModel(player_model));
 }
 
 #[derive(Event)]
@@ -65,6 +36,8 @@ pub struct SpawnPlayer {
 
 fn on_spawn_player(
     trigger: Trigger<SpawnPlayer>,
+    // player_model: Res<PlayerModel>,
+    asset_server: Res<AssetServer>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -88,10 +61,7 @@ fn on_spawn_player(
         .with_dual_axis(Action::CameraOrbit, MouseMove::default().inverted_y());
 
     let mesh = meshes.add(Capsule3d::new(0.5, 1.0));
-    let material = materials.add(StandardMaterial {
-        base_color: tailwind::RED_400.into(),
-        ..Default::default()
-    });
+    let material = materials.add(StandardMaterial::default());
 
     commands.spawn((
         Name::new("Player"),
@@ -100,16 +70,17 @@ fn on_spawn_player(
         KinematicCharacterBody::default(),
         Collider::capsule(0.5, 1.0),
         CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
-        Mesh3d(mesh.clone()),
-        MeshMaterial3d(material.clone()),
+        Mesh3d(mesh),
+        MeshMaterial3d(material),
         transform,
+        // SceneRoot(player_model.0.clone()),
     ));
 
     // TODO: move to an appropriate spot
     commands.spawn((
         PlayerCamera::default(),
-        bevy::core_pipeline::smaa::Smaa::default(),
         Transform::from_xyz(0.0, 7.5, 10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
+        bevy::core_pipeline::smaa::Smaa::default(),
     ));
 }
 

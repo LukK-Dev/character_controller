@@ -11,7 +11,7 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use crate::{
     flycam::FlycamPlugin,
     physics::{CollisionLayer, PhysicsPlugin},
-    player::{Player, PlayerPlugin, SpawnPlayer},
+    player::{types::Player, PlayerPlugin, SpawnPlayer},
 };
 
 const PLAYGROUND_SCENE_PATH: &str = "./playground.glb";
