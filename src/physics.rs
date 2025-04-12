@@ -9,6 +9,13 @@ pub struct PhysicsPlugin {
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
+        let distance = distance_from_center_to_hull(
+            &Collider::,
+            Quat::IDENTITY,
+            Dir3::new_unchecked((Vec3::X + Vec3::Y).normalize()),
+        );
+        info!("{distance}");
+
         app.add_plugins(
             PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
             // PhysicsPlugins::default(),
@@ -138,8 +145,10 @@ pub fn move_and_slide(
 
                 let hit_normal_xz_proj = Vec3::new(hit.normal1.x, 0.0, hit.normal1.z).normalize();
                 let slope_angle = PI / 2.0 - hit.normal1.angle_between(hit_normal_xz_proj);
-                info!("{:?}", slope_angle.to_degrees());
-                if slope_angle > body.max_terrain_slope {
+                // treat steep slopes and ceilings as walls (planes parallel to y-axis)
+                // TODO: investigate if ceilings should be treated as walls (I'm starting to think
+                // they shouldn't)
+                if slope_angle > body.max_terrain_slope || hit.normal1.y < 0.0 {
                     remaining_velocity =
                         remaining_velocity.reject_from_normalized(hit_normal_xz_proj);
                 } else {
@@ -153,9 +162,15 @@ pub fn move_and_slide(
             i += 1;
         }
 
+        // make sure that collider_gap is kept
+        if i > 0 {}
+
         transform.translation = cast_position;
     }
 }
+
+
+/// add collider_gap to max_distance
 
 pub fn move_and_slide_debug_visualization(
     bodies: Query<(&KinematicCharacterBody, &Collider, &Velocity, &Transform)>,
@@ -245,4 +260,21 @@ fn respond_to_ground(
             commands.entity(entity).remove::<Grounded>();
         }
     }
+}
+
+fn distance_from_center_to_hull(collider: &Collider, rotation: Quat, direction: Dir3) -> f32 {
+    let aabb = collider.aabb(Vec3::splat(0.0), rotation);
+    let max_distance = aabb.min.length().max(aabb.max.length());
+
+    collider
+        .cast_ray(
+            Vec3::splat(0.0),
+            rotation,
+            Vec3::splat(0.0),
+            direction.into(),
+            max_distance,
+            false,
+        )
+        .expect("collider not supported")
+        .0
 }
