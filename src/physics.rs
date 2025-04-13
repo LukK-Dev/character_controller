@@ -9,13 +9,6 @@ pub struct PhysicsPlugin {
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
-        let distance = distance_from_center_to_hull(
-            &Collider::,
-            Quat::IDENTITY,
-            Dir3::new_unchecked((Vec3::X + Vec3::Y).normalize()),
-        );
-        info!("{distance}");
-
         app.add_plugins(
             PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
             // PhysicsPlugins::default(),
@@ -135,7 +128,7 @@ pub fn move_and_slide(
                 Quat::IDENTITY,
                 Dir3::new_unchecked(remaining_velocity.normalize()),
                 &ShapeCastConfig {
-                    max_distance: remaining_velocity.length(),
+                    max_distance: remaining_velocity.length() + body.collider_gap,
                     ..Default::default()
                 },
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
@@ -168,7 +161,6 @@ pub fn move_and_slide(
         transform.translation = cast_position;
     }
 }
-
 
 /// add collider_gap to max_distance
 
@@ -240,20 +232,18 @@ fn respond_to_ground(
     spatial_query: SpatialQuery,
 ) {
     for (entity, body, collider, transform, mut velocity) in controllers.iter_mut() {
-        if spatial_query
-            .cast_shape(
-                collider,
-                transform.translation,
-                transform.rotation,
-                Dir3::new_unchecked(-Vec3::Y),
-                &ShapeCastConfig {
-                    max_distance: body.grounded_max_distance,
-                    ..Default::default()
-                },
-                &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
-            )
-            .is_some()
-        {
+        if let Some(hit) = spatial_query.cast_shape(
+            collider,
+            transform.translation,
+            transform.rotation,
+            Dir3::new_unchecked(-Vec3::Y),
+            &ShapeCastConfig {
+                max_distance: body.grounded_max_distance,
+                ..Default::default()
+            },
+            &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+        ) {
+            info!("distance to ground: {}", hit.distance);
             velocity.y = 0.0;
             commands.entity(entity).insert(Grounded);
         } else {
