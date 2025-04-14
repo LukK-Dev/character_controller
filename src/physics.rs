@@ -170,6 +170,7 @@ pub fn move_and_slide_debug_visualization(
     iterations: Res<MoveAndSlideMaxIterations>,
     mut gizmos: Gizmos,
 ) {
+    return;
     for (body, collider, velocity, transform) in bodies.iter() {
         let mut remaining_velocity = velocity.0.normalize() * 10.0;
         if remaining_velocity.length_squared() == 0.0 {
@@ -190,10 +191,23 @@ pub fn move_and_slide_debug_visualization(
                 },
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
             ) {
+                // let movable_distance = hit.distance - body.collider_gap;
+                // let last_cast_position = cast_position;
+                // cast_position += remaining_velocity.normalize() * movable_distance;
+                // remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
+
                 let movable_distance = hit.distance - body.collider_gap;
                 let last_cast_position = cast_position;
                 cast_position += remaining_velocity.normalize() * movable_distance;
-                remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
+
+                let hit_normal_xz_proj = Vec3::new(hit.normal1.x, 0.0, hit.normal1.z).normalize();
+                let slope_angle = PI / 2.0 - hit.normal1.angle_between(hit_normal_xz_proj);
+                if slope_angle > body.max_terrain_slope || hit.normal1.y < 0.0 {
+                    remaining_velocity =
+                        remaining_velocity.reject_from_normalized(hit_normal_xz_proj);
+                } else {
+                    remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
+                }
 
                 gizmos.line(last_cast_position, cast_position, tailwind::RED_400);
                 gizmos.primitive_3d(
