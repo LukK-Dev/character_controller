@@ -4,7 +4,7 @@ use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind, prelude::*};
 
 pub struct PhysicsPlugin {
-    move_and_slide_iterations: usize,
+    collide_and_slide_max_iterations: usize,
 }
 
 impl Plugin for PhysicsPlugin {
@@ -15,7 +15,9 @@ impl Plugin for PhysicsPlugin {
         );
         // app.add_plugins(PhysicsDebugPlugin::default());
 
-        app.insert_resource(MoveAndSlideMaxIterations(self.move_and_slide_iterations));
+        app.insert_resource(CollideAndSlideMaxIterations(
+            self.collide_and_slide_max_iterations,
+        ));
 
         // app.add_systems(
         //     PreUpdate,
@@ -24,13 +26,13 @@ impl Plugin for PhysicsPlugin {
         // );
         // app.add_systems(FixedPostUpdate, (move_and_slide, update_grounded_state));
 
-        app.add_systems(Update, move_and_slide_debug_visualization);
+        app.add_systems(Update, collide_and_slide_debug_visualization);
 
         let physics_schedule = app
         .get_schedule_mut(PhysicsSchedule)
             .expect("missing PhysicsSchedule (try adding the Avian PhysicsPlugins before adding this plugin)");
         physics_schedule.add_systems(
-            (move_and_slide, respond_to_ground)
+            (collide_and_slide, respond_to_ground)
                 .chain()
                 .in_set(PhysicsStepSet::First),
         );
@@ -40,7 +42,7 @@ impl Plugin for PhysicsPlugin {
 impl Default for PhysicsPlugin {
     fn default() -> Self {
         Self {
-            move_and_slide_iterations: 8,
+            collide_and_slide_max_iterations: 8,
         }
     }
 }
@@ -54,7 +56,7 @@ pub enum CollisionLayer {
 }
 
 #[derive(Resource)]
-pub struct MoveAndSlideMaxIterations(usize);
+pub struct CollideAndSlideMaxIterations(usize);
 
 #[derive(Component)]
 #[require(Velocity, Transform, RigidBody(|| RigidBody::Kinematic), Collider)]
@@ -102,7 +104,7 @@ impl std::ops::DerefMut for Velocity {
 #[derive(Component)]
 pub struct Grounded;
 
-pub fn move_and_slide(
+pub fn collide_and_slide(
     mut bodies: Query<(
         &KinematicCharacterBody,
         &Collider,
@@ -110,7 +112,7 @@ pub fn move_and_slide(
         &mut Transform,
     )>,
     spatial_query: SpatialQuery,
-    iterations: Res<MoveAndSlideMaxIterations>,
+    iterations: Res<CollideAndSlideMaxIterations>,
     time: Res<Time>,
 ) {
     for (body, collider, velocity, mut transform) in bodies.iter_mut() {
@@ -162,15 +164,12 @@ pub fn move_and_slide(
     }
 }
 
-/// add collider_gap to max_distance
-
-pub fn move_and_slide_debug_visualization(
+pub fn collide_and_slide_debug_visualization(
     bodies: Query<(&KinematicCharacterBody, &Collider, &Velocity, &Transform)>,
     spatial_query: SpatialQuery,
-    iterations: Res<MoveAndSlideMaxIterations>,
+    iterations: Res<CollideAndSlideMaxIterations>,
     mut gizmos: Gizmos,
 ) {
-    return;
     for (body, collider, velocity, transform) in bodies.iter() {
         let mut remaining_velocity = velocity.0.normalize() * 10.0;
         if remaining_velocity.length_squared() == 0.0 {
@@ -191,11 +190,6 @@ pub fn move_and_slide_debug_visualization(
                 },
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
             ) {
-                // let movable_distance = hit.distance - body.collider_gap;
-                // let last_cast_position = cast_position;
-                // cast_position += remaining_velocity.normalize() * movable_distance;
-                // remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
-
                 let movable_distance = hit.distance - body.collider_gap;
                 let last_cast_position = cast_position;
                 cast_position += remaining_velocity.normalize() * movable_distance;

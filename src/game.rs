@@ -1,5 +1,8 @@
-use std::time::Duration;
-
+use crate::{
+    flycam::FlycamPlugin,
+    physics::{CollisionLayer, PhysicsPlugin},
+    player::{types::Player, PlayerPlugin, SpawnPlayer},
+};
 use avian3d::prelude::*;
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
@@ -7,12 +10,7 @@ use bevy::{
     window::{CursorGrabMode, PrimaryWindow, WindowMode},
 };
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-
-use crate::{
-    flycam::FlycamPlugin,
-    physics::{CollisionLayer, PhysicsPlugin},
-    player::{types::Player, PlayerPlugin, SpawnPlayer},
-};
+use std::time::Duration;
 
 const PLAYGROUND_SCENE_PATH: &str = "./playground.glb";
 
@@ -20,9 +18,11 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(DefaultPlugins);
-        app.add_plugins(WorldInspectorPlugin::new());
-        app.add_plugins(FrameTimeDiagnosticsPlugin);
+        app.add_plugins((
+            DefaultPlugins,
+            WorldInspectorPlugin::new(),
+            FrameTimeDiagnosticsPlugin,
+        ));
 
         app.add_plugins((PlayerPlugin, FlycamPlugin, PhysicsPlugin::default()));
 

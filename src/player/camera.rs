@@ -13,7 +13,7 @@ impl Plugin for PlayerCameraPlugin {
             PostUpdate,
             (
                 orbit,
-                follow_player.after(crate::physics::move_and_slide),
+                follow_player.after(crate::physics::collide_and_slide),
                 prevent_blindness,
             )
                 .chain(),
