@@ -9,11 +9,25 @@ pub struct PhysicsPlugin {
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(
-            PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
-            // PhysicsPlugins::default(),
+        let c = Collider::capsule(0.5, 1.0);
+        info!(
+            "{:?}",
+            distance_from_center_to_hull(&c, Quat::IDENTITY, Dir3::new_unchecked(Vec3::Y))
         );
-        // app.add_plugins(PhysicsDebugPlugin::default());
+        info!(
+            "{:?}",
+            distance_from_center_to_hull(
+                &extended_collider(&c, 0.1),
+                Quat::IDENTITY,
+                Dir3::new_unchecked(Vec3::Y)
+            )
+        );
+
+        app.add_plugins((
+            // PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
+            PhysicsPlugins::default(),
+            PhysicsDebugPlugin::default(),
+        ));
 
         app.insert_resource(CollideAndSlideMaxIterations(
             self.collide_and_slide_max_iterations,
@@ -76,7 +90,7 @@ impl Default for KinematicCharacterBody {
     fn default() -> Self {
         Self {
             grounded_max_distance: 0.1,
-            collider_gap: 0.1,
+            collider_gap: 0.015,
             max_terrain_slope: 45f32.to_radians(),
             snap_to_floor: true,
             snap_to_floor_max_distance: 0.1,
@@ -121,16 +135,17 @@ pub fn collide_and_slide(
             continue;
         }
 
+        let collider = extended_collider(collider, body.collider_gap);
         let mut cast_position = transform.translation;
         let mut i = 0;
         while i < iterations.0 && remaining_velocity.length_squared() > 0.0 {
             if let Some(hit) = spatial_query.cast_shape(
-                collider,
+                &collider,
                 cast_position,
                 Quat::IDENTITY,
                 Dir3::new_unchecked(remaining_velocity.normalize()),
                 &ShapeCastConfig {
-                    max_distance: remaining_velocity.length() + body.collider_gap,
+                    max_distance: remaining_velocity.length(),
                     ..Default::default()
                 },
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
@@ -157,9 +172,8 @@ pub fn collide_and_slide(
             i += 1;
         }
 
-        // make sure that collider_gap is kept
-        if i > 0 {}
-
+        let delta = (cast_position - transform.translation).length();
+        info!("delta: {:?}", delta);
         transform.translation = cast_position;
     }
 }
@@ -185,7 +199,7 @@ pub fn collide_and_slide_debug_visualization(
                 Quat::IDENTITY,
                 Dir3::new_unchecked(remaining_velocity.normalize()),
                 &ShapeCastConfig {
-                    max_distance: remaining_velocity.length(),
+                    max_distance: remaining_velocity.length() + body.collider_gap,
                     ..Default::default()
                 },
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
@@ -240,7 +254,7 @@ fn respond_to_ground(
     spatial_query: SpatialQuery,
 ) {
     for (entity, body, collider, transform, mut velocity) in controllers.iter_mut() {
-        if let Some(hit) = spatial_query.cast_shape(
+        if let Some(_hit) = spatial_query.cast_shape(
             collider,
             transform.translation,
             transform.rotation,
@@ -251,7 +265,7 @@ fn respond_to_ground(
             },
             &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
         ) {
-            info!("distance to ground: {}", hit.distance);
+            // info!("distance to ground: {}", hit.distance);
             velocity.y = 0.0;
             commands.entity(entity).insert(Grounded);
         } else {
@@ -260,14 +274,18 @@ fn respond_to_ground(
     }
 }
 
-fn distance_from_center_to_hull(collider: &Collider, rotation: Quat, direction: Dir3) -> f32 {
-    let aabb = collider.aabb(Vec3::splat(0.0), rotation);
+fn distance_from_center_to_hull(
+    collider: &Collider,
+    collider_rotation: Quat,
+    direction: Dir3,
+) -> f32 {
+    let aabb = collider.aabb(Vec3::splat(0.0), collider_rotation);
     let max_distance = aabb.min.length().max(aabb.max.length());
 
     collider
         .cast_ray(
             Vec3::splat(0.0),
-            rotation,
+            collider_rotation,
             Vec3::splat(0.0),
             direction.into(),
             max_distance,
@@ -275,4 +293,18 @@ fn distance_from_center_to_hull(collider: &Collider, rotation: Quat, direction: 
         )
         .expect("collider not supported")
         .0
+}
+
+fn extended_collider(collider: &Collider, size: f32) -> Collider {
+    if let Some(ball) = collider.shape().as_ball() {
+        Collider::sphere(ball.radius + size)
+    } else if let Some(capsule) = collider.shape().as_capsule() {
+        let extended_radius = capsule.radius + size;
+        let inclusive_height = capsule.height() + 2.0 * capsule.radius;
+        let inclusive_extended_height = inclusive_height + 2.0 * size;
+        let extended_height = inclusive_extended_height - 2.0 * extended_radius;
+        Collider::capsule(extended_radius, extended_height)
+    } else {
+        panic!("unsupported shape");
+    }
 }

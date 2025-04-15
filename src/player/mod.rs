@@ -63,7 +63,10 @@ fn on_spawn_player(
             Action::CameraOrbit,
             GamepadStick::RIGHT.with_deadzone_symmetric(0.2),
         )
-        .with_dual_axis(Action::CameraOrbit, MouseMove::default().inverted_y());
+        .with_dual_axis(
+            Action::CameraOrbit,
+            MouseMove::default().inverted_y().sensitivity(0.25),
+        );
 
     let mesh = meshes.add(Capsule3d::new(0.5, 1.0));
     let material = materials.add(StandardMaterial::default());
