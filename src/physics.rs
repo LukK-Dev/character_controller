@@ -1,7 +1,10 @@
-use std::f32::consts::PI;
-
 use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind, prelude::*};
+use std::f32::consts::{FRAC_PI_2, PI};
+
+// TODO: apply small offset to avoid extended collider from penetrating surfaces
+
+const EPSILON: f32 = 1e-04;
 
 pub struct PhysicsPlugin {
     collide_and_slide_max_iterations: usize,
@@ -9,24 +12,10 @@ pub struct PhysicsPlugin {
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
-        let c = Collider::capsule(0.5, 1.0);
-        info!(
-            "{:?}",
-            distance_from_center_to_hull(&c, Quat::IDENTITY, Dir3::new_unchecked(Vec3::Y))
-        );
-        info!(
-            "{:?}",
-            distance_from_center_to_hull(
-                &extended_collider(&c, 0.1),
-                Quat::IDENTITY,
-                Dir3::new_unchecked(Vec3::Y)
-            )
-        );
-
         app.add_plugins((
             // PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
             PhysicsPlugins::default(),
-            PhysicsDebugPlugin::default(),
+            // PhysicsDebugPlugin::default(),
         ));
 
         app.insert_resource(CollideAndSlideMaxIterations(
@@ -40,7 +29,7 @@ impl Plugin for PhysicsPlugin {
         // );
         // app.add_systems(FixedPostUpdate, (move_and_slide, update_grounded_state));
 
-        app.add_systems(Update, collide_and_slide_debug_visualization);
+        // app.add_systems(Update, collide_and_slide_debug_visualization);
 
         let physics_schedule = app
         .get_schedule_mut(PhysicsSchedule)
@@ -129,12 +118,13 @@ pub fn collide_and_slide(
     iterations: Res<CollideAndSlideMaxIterations>,
     time: Res<Time>,
 ) {
-    for (body, collider, velocity, mut transform) in bodies.iter_mut() {
+    'outer: for (body, collider, velocity, mut transform) in bodies.iter_mut() {
         let mut remaining_velocity = velocity.0 * time.delta_secs();
         if remaining_velocity.length_squared() == 0.0 {
             continue;
         }
 
+        let initial_velocity = remaining_velocity;
         let collider = extended_collider(collider, body.collider_gap);
         let mut cast_position = transform.translation;
         let mut i = 0;
@@ -164,6 +154,12 @@ pub fn collide_and_slide(
                 } else {
                     remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
                 }
+
+                // prevents jittering that may occur, when the velocity, after sliding, points away
+                // from the initial velocity
+                if initial_velocity.angle_between(remaining_velocity) > FRAC_PI_2 {
+                    continue 'outer;
+                }
             } else {
                 cast_position += remaining_velocity;
                 break;
@@ -172,8 +168,6 @@ pub fn collide_and_slide(
             i += 1;
         }
 
-        let delta = (cast_position - transform.translation).length();
-        info!("delta: {:?}", delta);
         transform.translation = cast_position;
     }
 }
