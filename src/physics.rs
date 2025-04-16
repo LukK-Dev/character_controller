@@ -78,7 +78,7 @@ pub struct KinematicCharacterBody {
 impl Default for KinematicCharacterBody {
     fn default() -> Self {
         Self {
-            grounded_max_distance: 0.1,
+            grounded_max_distance: 0.05,
             collider_gap: 0.015,
             max_terrain_slope: 45f32.to_radians(),
             snap_to_floor: true,
@@ -115,7 +115,7 @@ pub fn collide_and_slide(
         &mut Transform,
     )>,
     spatial_query: SpatialQuery,
-    iterations: Res<CollideAndSlideMaxIterations>,
+    max_iterations: Res<CollideAndSlideMaxIterations>,
     time: Res<Time>,
 ) {
     'outer: for (body, collider, velocity, mut transform) in bodies.iter_mut() {
@@ -128,7 +128,7 @@ pub fn collide_and_slide(
         let collider = extended_collider(collider, body.collider_gap);
         let mut cast_position = transform.translation;
         let mut i = 0;
-        while i < iterations.0 && remaining_velocity.length_squared() > 0.0 {
+        while i < max_iterations.0 && remaining_velocity.length_squared() > 0.0 {
             if let Some(hit) = spatial_query.cast_shape(
                 &collider,
                 cast_position,
@@ -168,7 +168,10 @@ pub fn collide_and_slide(
             i += 1;
         }
 
-        transform.translation = cast_position;
+        // only move when a stable end position was found
+        if i < max_iterations.0 {
+            transform.translation = cast_position;
+        }
     }
 }
 
@@ -248,18 +251,20 @@ fn respond_to_ground(
     spatial_query: SpatialQuery,
 ) {
     for (entity, body, collider, transform, mut velocity) in controllers.iter_mut() {
-        if let Some(_hit) = spatial_query.cast_shape(
-            collider,
-            transform.translation,
-            transform.rotation,
-            Dir3::new_unchecked(-Vec3::Y),
-            &ShapeCastConfig {
-                max_distance: body.grounded_max_distance,
-                ..Default::default()
-            },
-            &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
-        ) {
-            // info!("distance to ground: {}", hit.distance);
+        if spatial_query
+            .cast_shape(
+                collider,
+                transform.translation,
+                transform.rotation,
+                Dir3::new_unchecked(-Vec3::Y),
+                &ShapeCastConfig {
+                    max_distance: body.grounded_max_distance,
+                    ..Default::default()
+                },
+                &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+            )
+            .is_some()
+        {
             velocity.y = 0.0;
             commands.entity(entity).insert(Grounded);
         } else {

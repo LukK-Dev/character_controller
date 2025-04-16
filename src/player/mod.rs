@@ -81,6 +81,11 @@ fn on_spawn_player(
         Mesh3d(mesh),
         MeshMaterial3d(material),
         transform,
+        PointLight {
+            intensity: 100_000.0,
+            range: 10.0,
+            ..Default::default()
+        },
         // SceneRoot(player_model.0.clone()),
     ));
 
