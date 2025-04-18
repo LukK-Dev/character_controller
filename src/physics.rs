@@ -12,6 +12,17 @@ pub struct PhysicsPlugin {
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
+        // let collider = Collider::capsule(1.0, 1.0);
+        // println!(
+        //     "{:?}",
+        //     distance_from_center_to_hull(&collider, Quat::IDENTITY, Dir3::new_unchecked(Vec3::Y))
+        // );
+        // let collider = inflated_collider(&collider, -0.5);
+        // println!(
+        //     "{:?}",
+        //     distance_from_center_to_hull(&collider, Quat::IDENTITY, Dir3::new_unchecked(Vec3::Y))
+        // );
+
         app.add_plugins((
             // PhysicsPlugins::default().set(PhysicsInterpolationPlugin::extrapolate_all()),
             PhysicsPlugins::default(),
@@ -31,10 +42,10 @@ impl Plugin for PhysicsPlugin {
 
         // app.add_systems(Update, collide_and_slide_debug_visualization);
 
-        let physics_schedule = app
-        .get_schedule_mut(PhysicsSchedule)
-            .expect("missing PhysicsSchedule (try adding the Avian PhysicsPlugins before adding this plugin)");
-        physics_schedule.add_systems(
+        // app.add_systems(PostUpdate, (collide_and_slide, respond_to_ground));
+
+        app.add_systems(
+            PhysicsSchedule,
             (collide_and_slide, respond_to_ground)
                 .chain()
                 .in_set(PhysicsStepSet::First),
@@ -118,62 +129,118 @@ pub fn collide_and_slide(
     max_iterations: Res<CollideAndSlideMaxIterations>,
     time: Res<Time>,
 ) {
-    'outer: for (body, collider, velocity, mut transform) in bodies.iter_mut() {
+    for (body, collider, velocity, mut transform) in bodies.iter_mut() {
         let mut remaining_velocity = velocity.0 * time.delta_secs();
+        // remove after having made loop lol
         if remaining_velocity.length_squared() == 0.0 {
             continue;
         }
 
-        let initial_velocity = remaining_velocity;
-        let collider = extended_collider(collider, body.collider_gap);
-        let mut cast_position = transform.translation;
+        let collider = inflated_collider(collider, -body.collider_gap);
+        let mut position = transform.translation;
+        let mut direction = remaining_velocity.normalize();
         let mut i = 0;
         while i < max_iterations.0 && remaining_velocity.length_squared() > 0.0 {
             if let Some(hit) = spatial_query.cast_shape(
                 &collider,
-                cast_position,
+                position,
                 Quat::IDENTITY,
-                Dir3::new_unchecked(remaining_velocity.normalize()),
+                Dir3::new_unchecked(direction),
                 &ShapeCastConfig {
-                    max_distance: remaining_velocity.length(),
+                    max_distance: remaining_velocity.length() + body.collider_gap,
                     ..Default::default()
                 },
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
             ) {
-                let movable_distance = hit.distance - body.collider_gap;
-                cast_position += remaining_velocity.normalize() * movable_distance;
+                let mut new_position = position + direction * hit.distance;
+                new_position += hit.normal1 * body.collider_gap;
 
-                let hit_normal_xz_proj = Vec3::new(hit.normal1.x, 0.0, hit.normal1.z).normalize();
-                let slope_angle = PI / 2.0 - hit.normal1.angle_between(hit_normal_xz_proj);
-                // treat steep slopes and ceilings as walls (planes parallel to y-axis)
-                // TODO: investigate if ceilings should be treated as walls (I'm starting to think
-                // they shouldn't)
-                if slope_angle > body.max_terrain_slope || hit.normal1.y < 0.0 {
-                    remaining_velocity =
-                        remaining_velocity.reject_from_normalized(hit_normal_xz_proj);
-                } else {
-                    remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
-                }
+                // let remaining_distance = velocity.length() - (new_position - position).length();
+                // remaining_velocity = (velocity.normalize_or_zero() * remaining_distance)
+                //     .reject_from_normalized(hit.normal1);
+                remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
+                direction = remaining_velocity.normalize();
 
-                // prevents jittering that may occur, when the velocity, after sliding, points away
-                // from the initial velocity
-                if initial_velocity.angle_between(remaining_velocity) > FRAC_PI_2 {
-                    continue 'outer;
-                }
+                position = new_position;
             } else {
-                cast_position += remaining_velocity;
+                position += remaining_velocity;
                 break;
             }
 
             i += 1;
         }
 
-        // only move when a stable end position was found
-        if i < max_iterations.0 {
-            transform.translation = cast_position;
-        }
+        transform.translation = position;
     }
 }
+
+// pub fn collide_and_slide(
+//     mut bodies: Query<(
+//         &KinematicCharacterBody,
+//         &Collider,
+//         &Velocity,
+//         &mut Transform,
+//     )>,
+//     spatial_query: SpatialQuery,
+//     max_iterations: Res<CollideAndSlideMaxIterations>,
+//     time: Res<Time>,
+// ) {
+//     'outer: for (body, collider, velocity, mut transform) in bodies.iter_mut() {
+//         let mut remaining_velocity = velocity.0 * time.delta_secs();
+//         if remaining_velocity.length_squared() == 0.0 {
+//             continue;
+//         }
+//
+//         let initial_velocity = remaining_velocity;
+//         let collider = extended_collider(collider, body.collider_gap);
+//         let mut cast_position = transform.translation;
+//         let mut i = 0;
+//         while i < max_iterations.0 && remaining_velocity.length_squared() > 0.0 {
+//             if let Some(hit) = spatial_query.cast_shape(
+//                 &collider,
+//                 cast_position,
+//                 Quat::IDENTITY,
+//                 Dir3::new_unchecked(remaining_velocity.normalize()),
+//                 &ShapeCastConfig {
+//                     max_distance: remaining_velocity.length(),
+//                     ..Default::default()
+//                 },
+//                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+//             ) {
+//                 let movable_distance = hit.distance - body.collider_gap;
+//                 cast_position += remaining_velocity.normalize() * movable_distance;
+//
+//                 let hit_normal_xz_proj = Vec3::new(hit.normal1.x, 0.0, hit.normal1.z).normalize();
+//                 let slope_angle = PI / 2.0 - hit.normal1.angle_between(hit_normal_xz_proj);
+//                 // treat steep slopes and ceilings as walls (planes parallel to y-axis)
+//                 // TODO: investigate if ceilings should be treated as walls (I'm starting to think
+//                 // they shouldn't)
+//                 if slope_angle > body.max_terrain_slope || hit.normal1.y < 0.0 {
+//                     remaining_velocity =
+//                         remaining_velocity.reject_from_normalized(hit_normal_xz_proj);
+//                 } else {
+//                     remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
+//                 }
+//
+//                 // prevents jittering that may occur, when the velocity, after sliding, points away
+//                 // from the initial velocity
+//                 if initial_velocity.angle_between(remaining_velocity) > FRAC_PI_2 {
+//                     continue 'outer;
+//                 }
+//             } else {
+//                 cast_position += remaining_velocity;
+//                 break;
+//             }
+//
+//             i += 1;
+//         }
+//
+//         // only move when a stable end position was found
+//         if i < max_iterations.0 {
+//             transform.translation = cast_position;
+//         }
+//     }
+// }
 
 pub fn collide_and_slide_debug_visualization(
     bodies: Query<(&KinematicCharacterBody, &Collider, &Velocity, &Transform)>,
@@ -294,7 +361,7 @@ fn distance_from_center_to_hull(
         .0
 }
 
-fn extended_collider(collider: &Collider, size: f32) -> Collider {
+fn inflated_collider(collider: &Collider, size: f32) -> Collider {
     if let Some(ball) = collider.shape().as_ball() {
         Collider::sphere(ball.radius + size)
     } else if let Some(capsule) = collider.shape().as_capsule() {

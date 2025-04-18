@@ -41,8 +41,7 @@ pub struct SpawnPlayer {
 
 fn on_spawn_player(
     trigger: Trigger<SpawnPlayer>,
-    // player_model: Res<PlayerModel>,
-    // asset_server: Res<AssetServer>,
+    player_model: Res<PlayerModel>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -68,7 +67,7 @@ fn on_spawn_player(
             MouseMove::default().inverted_y().sensitivity(0.25),
         );
 
-    let mesh = meshes.add(Capsule3d::new(0.5, 1.0));
+    let mesh = meshes.add(Capsule3d::new(0.5, 0.9));
     let material = materials.add(StandardMaterial::default());
 
     commands.spawn((
@@ -76,7 +75,7 @@ fn on_spawn_player(
         Player::default(),
         InputManagerBundle::with_map(input_map),
         KinematicCharacterBody::default(),
-        Collider::capsule(0.5, 1.0),
+        Collider::capsule(0.5, 0.9),
         CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
         Mesh3d(mesh),
         MeshMaterial3d(material),
@@ -86,13 +85,15 @@ fn on_spawn_player(
             range: 10.0,
             ..Default::default()
         },
-        // SceneRoot(player_model.0.clone()),
+        SceneRoot(player_model.0.clone()),
     ));
+
+    commands.spawn(SceneRoot(player_model.0.clone()));
 
     // TODO: move to an appropriate spot
     commands.spawn((
         PlayerCamera::default(),
-        Transform::from_xyz(0.0, 7.5, 10.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
+        Transform::from_xyz(0.0, 5.0, 7.5).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
         bevy::core_pipeline::smaa::Smaa::default(),
     ));
 }
