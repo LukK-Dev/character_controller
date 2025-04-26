@@ -1,6 +1,8 @@
 mod camera;
 pub mod types;
 
+use std::f32::consts::PI;
+
 use crate::physics::{CollisionLayer, Grounded, KinematicCharacterBody, Velocity};
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -67,33 +69,43 @@ fn on_spawn_player(
             MouseMove::default().inverted_y().sensitivity(0.25),
         );
 
-    let mesh = meshes.add(Capsule3d::new(0.5, 0.9));
-    let material = materials.add(StandardMaterial::default());
+    let mesh = meshes.add(Capsule3d::new(0.3, 1.3));
+    let material = StandardMaterial {
+        base_color: Color::WHITE.with_alpha(0.5),
+        alpha_mode: AlphaMode::Blend,
+        ..Default::default()
+    };
+    let material = materials.add(material);
 
-    commands.spawn((
-        Name::new("Player"),
-        Player::default(),
-        InputManagerBundle::with_map(input_map),
-        KinematicCharacterBody::default(),
-        Collider::capsule(0.5, 0.9),
-        CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
-        Mesh3d(mesh),
-        MeshMaterial3d(material),
-        transform,
-        PointLight {
-            intensity: 100_000.0,
-            range: 10.0,
-            ..Default::default()
-        },
-        SceneRoot(player_model.0.clone()),
-    ));
-
-    commands.spawn(SceneRoot(player_model.0.clone()));
+    let player = commands
+        .spawn((
+            Name::new("Player"),
+            Player::default(),
+            InputManagerBundle::with_map(input_map),
+            KinematicCharacterBody::default(),
+            Collider::capsule(0.3, 1.3),
+            CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
+            Mesh3d(mesh),
+            MeshMaterial3d(material),
+            transform,
+            PointLight {
+                intensity: 100_000.0,
+                range: 10.0,
+                ..Default::default()
+            },
+        ))
+        .id();
+    commands
+        .spawn((
+            SceneRoot(player_model.0.clone()),
+            Transform::from_rotation(Quat::from_axis_angle(Vec3::Y, PI))
+                .with_translation(Vec3::NEG_Y * (0.3 + 0.65)),
+        ))
+        .set_parent(player);
 
     // TODO: move to an appropriate spot
     commands.spawn((
         PlayerCamera::default(),
-        Transform::from_xyz(0.0, 5.0, 7.5).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
         bevy::core_pipeline::smaa::Smaa::default(),
     ));
 }
@@ -105,6 +117,7 @@ fn grounded_movement(
     >,
     player_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
     time: Res<Time>,
+    mut gizmos: Gizmos,
 ) {
     if let Ok((player, input, mut transform, mut velocity)) = player.get_single_mut() {
         if input.just_pressed(&Action::Jump) {

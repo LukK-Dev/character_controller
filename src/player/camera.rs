@@ -33,7 +33,7 @@ pub struct PlayerCamera {
 impl Default for PlayerCamera {
     fn default() -> Self {
         Self {
-            target_distance: 15.0,
+            target_distance: 10.0,
             orbit_speed: PI,
             pitch_constraint: -15f32.to_radians()..90f32.to_radians(),
         }
@@ -67,8 +67,11 @@ fn follow_player(
 ) {
     if let Ok((camera, mut camera_transform)) = camera.get_single_mut() {
         if let Ok(player_transform) = player.get_single() {
+            // TODO: this is temporary
+            let mut target_position = player_transform.translation;
+            target_position.y += 0.7;
             camera_transform.translation =
-                player_transform.translation - camera_transform.forward() * camera.target_distance;
+                target_position - camera_transform.forward() * camera.target_distance;
         }
     }
 }

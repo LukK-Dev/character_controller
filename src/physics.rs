@@ -1,9 +1,9 @@
 use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind, prelude::*};
 use std::f32::consts::{FRAC_PI_2, PI};
-
 // TODO: apply small offset to avoid extended collider from penetrating surfaces
 
+// small number used to work around floating point inaccuracies
 const EPSILON: f32 = 1e-04;
 
 pub struct PhysicsPlugin {
@@ -33,23 +33,23 @@ impl Plugin for PhysicsPlugin {
             self.collide_and_slide_max_iterations,
         ));
 
-        // app.add_systems(
-        //     PreUpdate,
-        //     // (update_grounded_state, apply_gravity, snap_to_floor, unstuck).chain(),
-        //     (update_grounded_state, apply_gravity, unstuck).chain(),
-        // );
-        // app.add_systems(FixedPostUpdate, (move_and_slide, update_grounded_state));
-
-        // app.add_systems(Update, collide_and_slide_debug_visualization);
-
-        // app.add_systems(PostUpdate, (collide_and_slide, respond_to_ground));
-
         app.add_systems(
-            PhysicsSchedule,
-            (collide_and_slide, respond_to_ground)
-                .chain()
-                .in_set(PhysicsStepSet::First),
+            PostUpdate,
+            (
+                collide_and_slide,
+                snap_to_floor,
+                collide_and_slide_debug_visualization,
+                respond_to_ground,
+            )
+                .chain(),
         );
+
+        // app.add_systems(
+        //     PhysicsSchedule,
+        //     (collide_and_slide, respond_to_ground)
+        //         .chain()
+        //         .in_set(PhysicsStepSet::First),
+        // );
     }
 }
 
@@ -78,8 +78,8 @@ pub struct KinematicCharacterBody {
     /// maximum distance between collider and ground for the body to be considered grounded
     grounded_max_distance: f32,
     /// gap between collider of body and terrain to prevent getting stuck
-    collider_gap: f32,
-    /// angle at which the body will slide off of slopes
+    // collider_gap: f32,
+    /// body will slide off of terrain with slope angles greater than ['max_terrain_slope']
     max_terrain_slope: f32,
     snap_to_floor: bool,
     /// maximum distance to floor, at which snapping can occur
@@ -90,7 +90,7 @@ impl Default for KinematicCharacterBody {
     fn default() -> Self {
         Self {
             grounded_max_distance: 0.05,
-            collider_gap: 0.015,
+            // collider_gap: 0.015,
             max_terrain_slope: 45f32.to_radians(),
             snap_to_floor: true,
             snap_to_floor_max_distance: 0.1,
@@ -129,181 +129,123 @@ pub fn collide_and_slide(
     max_iterations: Res<CollideAndSlideMaxIterations>,
     time: Res<Time>,
 ) {
-    for (body, collider, velocity, mut transform) in bodies.iter_mut() {
-        let mut remaining_velocity = velocity.0 * time.delta_secs();
-        // remove after having made loop lol
-        if remaining_velocity.length_squared() == 0.0 {
-            continue;
-        }
+    bodies
+        .par_iter_mut()
+        .for_each(|(_body, collider, velocity, mut transform)| {
+            let mut remaining_velocity = velocity.0 * time.delta_secs();
+            let mut remaining_distance = remaining_velocity.length();
+            let adjusted_collider = inflated_collider(collider, -EPSILON);
+            let mut position = transform.translation;
+            let mut direction = remaining_velocity.normalize();
+            let mut i = 0;
+            while i < max_iterations.0 && remaining_distance > 0.0 {
+                if let Some(hit) = spatial_query.cast_shape(
+                    &adjusted_collider,
+                    position,
+                    Quat::IDENTITY,
+                    Dir3::new_unchecked(direction),
+                    &ShapeCastConfig {
+                        max_distance: remaining_distance + EPSILON,
+                        ..Default::default()
+                    },
+                    &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+                ) {
+                    let mut new_position = position + direction * hit.distance;
+                    new_position += hit.normal1 * EPSILON;
 
-        let collider = inflated_collider(collider, -body.collider_gap);
+                    remaining_distance -= position.distance(new_position);
+                    remaining_velocity =
+                        remaining_velocity.normalize_or_zero() * remaining_distance;
+                    remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
+                    direction = remaining_velocity.normalize();
+
+                    position = new_position;
+                } else {
+                    position += remaining_velocity;
+                    break;
+                }
+
+                i += 1;
+            }
+
+            transform.translation = position;
+        });
+}
+
+pub fn collide_and_slide_debug_visualization(
+    bodies: Query<(&KinematicCharacterBody, &Collider, &Velocity, &Transform)>,
+    spatial_query: SpatialQuery,
+    max_iterations: Res<CollideAndSlideMaxIterations>,
+    mut gizmos: Gizmos,
+) {
+    for (_body, collider, velocity, transform) in &bodies {
+        let mut remaining_velocity = velocity.0;
+        let adjusted_collider = inflated_collider(collider, -EPSILON);
         let mut position = transform.translation;
+
+        let capsule = adjusted_collider.shape().as_capsule().unwrap();
+        gizmos.primitive_3d(
+            &Capsule3d::new(capsule.radius, capsule.height()),
+            Isometry3d::from_translation(position),
+            tailwind::GREEN_500,
+        );
+
         let mut direction = remaining_velocity.normalize();
         let mut i = 0;
         while i < max_iterations.0 && remaining_velocity.length_squared() > 0.0 {
             if let Some(hit) = spatial_query.cast_shape(
-                &collider,
+                &adjusted_collider,
                 position,
                 Quat::IDENTITY,
                 Dir3::new_unchecked(direction),
                 &ShapeCastConfig {
-                    max_distance: remaining_velocity.length() + body.collider_gap,
+                    max_distance: remaining_velocity.length() + EPSILON,
                     ..Default::default()
                 },
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
             ) {
                 let mut new_position = position + direction * hit.distance;
-                new_position += hit.normal1 * body.collider_gap;
+                new_position += hit.normal1 * EPSILON;
 
-                // let remaining_distance = velocity.length() - (new_position - position).length();
-                // remaining_velocity = (velocity.normalize_or_zero() * remaining_distance)
-                //     .reject_from_normalized(hit.normal1);
+                gizmos.arrow(position, new_position, tailwind::RED_500);
+                gizmos.primitive_3d(
+                    &Capsule3d::new(capsule.radius, capsule.height()),
+                    Isometry3d::from_translation(new_position),
+                    tailwind::GREEN_500,
+                );
+
                 remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
                 direction = remaining_velocity.normalize();
 
                 position = new_position;
             } else {
-                position += remaining_velocity;
+                let new_position = position + remaining_velocity;
+                gizmos.arrow(position, new_position, tailwind::RED_500);
+                gizmos.primitive_3d(
+                    &Capsule3d::new(capsule.radius, capsule.height()),
+                    Isometry3d::from_translation(new_position),
+                    tailwind::GREEN_500,
+                );
                 break;
             }
 
             i += 1;
         }
-
-        transform.translation = position;
     }
 }
 
-// pub fn collide_and_slide(
-//     mut bodies: Query<(
-//         &KinematicCharacterBody,
-//         &Collider,
-//         &Velocity,
-//         &mut Transform,
-//     )>,
-//     spatial_query: SpatialQuery,
-//     max_iterations: Res<CollideAndSlideMaxIterations>,
-//     time: Res<Time>,
-// ) {
-//     'outer: for (body, collider, velocity, mut transform) in bodies.iter_mut() {
-//         let mut remaining_velocity = velocity.0 * time.delta_secs();
-//         if remaining_velocity.length_squared() == 0.0 {
-//             continue;
-//         }
-//
-//         let initial_velocity = remaining_velocity;
-//         let collider = extended_collider(collider, body.collider_gap);
-//         let mut cast_position = transform.translation;
-//         let mut i = 0;
-//         while i < max_iterations.0 && remaining_velocity.length_squared() > 0.0 {
-//             if let Some(hit) = spatial_query.cast_shape(
-//                 &collider,
-//                 cast_position,
-//                 Quat::IDENTITY,
-//                 Dir3::new_unchecked(remaining_velocity.normalize()),
-//                 &ShapeCastConfig {
-//                     max_distance: remaining_velocity.length(),
-//                     ..Default::default()
-//                 },
-//                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
-//             ) {
-//                 let movable_distance = hit.distance - body.collider_gap;
-//                 cast_position += remaining_velocity.normalize() * movable_distance;
-//
-//                 let hit_normal_xz_proj = Vec3::new(hit.normal1.x, 0.0, hit.normal1.z).normalize();
-//                 let slope_angle = PI / 2.0 - hit.normal1.angle_between(hit_normal_xz_proj);
-//                 // treat steep slopes and ceilings as walls (planes parallel to y-axis)
-//                 // TODO: investigate if ceilings should be treated as walls (I'm starting to think
-//                 // they shouldn't)
-//                 if slope_angle > body.max_terrain_slope || hit.normal1.y < 0.0 {
-//                     remaining_velocity =
-//                         remaining_velocity.reject_from_normalized(hit_normal_xz_proj);
-//                 } else {
-//                     remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
-//                 }
-//
-//                 // prevents jittering that may occur, when the velocity, after sliding, points away
-//                 // from the initial velocity
-//                 if initial_velocity.angle_between(remaining_velocity) > FRAC_PI_2 {
-//                     continue 'outer;
-//                 }
-//             } else {
-//                 cast_position += remaining_velocity;
-//                 break;
-//             }
-//
-//             i += 1;
-//         }
-//
-//         // only move when a stable end position was found
-//         if i < max_iterations.0 {
-//             transform.translation = cast_position;
-//         }
-//     }
-// }
-
-pub fn collide_and_slide_debug_visualization(
-    bodies: Query<(&KinematicCharacterBody, &Collider, &Velocity, &Transform)>,
+pub fn snap_to_floor(
+    mut bodies: Query<(
+        &KinematicCharacterBody,
+        &Collider,
+        &Velocity,
+        &mut Transform,
+    )>,
     spatial_query: SpatialQuery,
-    iterations: Res<CollideAndSlideMaxIterations>,
-    mut gizmos: Gizmos,
 ) {
-    for (body, collider, velocity, transform) in bodies.iter() {
-        let mut remaining_velocity = velocity.0.normalize() * 10.0;
-        if remaining_velocity.length_squared() == 0.0 {
-            continue;
-        }
-
-        let mut cast_position = transform.translation;
-        let mut i = 0;
-        while i < iterations.0 && remaining_velocity.length_squared() > 0.0 {
-            if let Some(hit) = spatial_query.cast_shape(
-                collider,
-                cast_position,
-                Quat::IDENTITY,
-                Dir3::new_unchecked(remaining_velocity.normalize()),
-                &ShapeCastConfig {
-                    max_distance: remaining_velocity.length() + body.collider_gap,
-                    ..Default::default()
-                },
-                &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
-            ) {
-                let movable_distance = hit.distance - body.collider_gap;
-                let last_cast_position = cast_position;
-                cast_position += remaining_velocity.normalize() * movable_distance;
-
-                let hit_normal_xz_proj = Vec3::new(hit.normal1.x, 0.0, hit.normal1.z).normalize();
-                let slope_angle = PI / 2.0 - hit.normal1.angle_between(hit_normal_xz_proj);
-                if slope_angle > body.max_terrain_slope || hit.normal1.y < 0.0 {
-                    remaining_velocity =
-                        remaining_velocity.reject_from_normalized(hit_normal_xz_proj);
-                } else {
-                    remaining_velocity = remaining_velocity.reject_from_normalized(hit.normal1);
-                }
-
-                gizmos.line(last_cast_position, cast_position, tailwind::RED_400);
-                gizmos.primitive_3d(
-                    &Capsule3d::default(),
-                    Isometry3d::from_translation(cast_position),
-                    tailwind::GREEN_400,
-                );
-            } else {
-                let last_cast_position = cast_position;
-                cast_position += remaining_velocity;
-
-                gizmos.line(last_cast_position, cast_position, tailwind::RED_400);
-                gizmos.primitive_3d(
-                    &Capsule3d::default(),
-                    Isometry3d::from_translation(cast_position),
-                    tailwind::GREEN_400,
-                );
-
-                break;
-            }
-
-            i += 1;
-        }
-    }
+    // bodies
+    //     .par_iter_mut()
+    //     .for_each(|(_body, collider, velocity, mut transform)| {}
 }
 
 fn respond_to_ground(
@@ -318,20 +260,24 @@ fn respond_to_ground(
     spatial_query: SpatialQuery,
 ) {
     for (entity, body, collider, transform, mut velocity) in controllers.iter_mut() {
-        if spatial_query
-            .cast_shape(
-                collider,
-                transform.translation,
-                transform.rotation,
-                Dir3::new_unchecked(-Vec3::Y),
-                &ShapeCastConfig {
-                    max_distance: body.grounded_max_distance,
-                    ..Default::default()
-                },
-                &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
-            )
-            .is_some()
-        {
+        let adjusted_collider = inflated_collider(collider, -EPSILON);
+        let mut is_grounded = false;
+        if let Some(hit) = spatial_query.cast_shape(
+            &adjusted_collider,
+            transform.translation,
+            transform.rotation,
+            Dir3::new_unchecked(-Vec3::Y),
+            &ShapeCastConfig {
+                max_distance: body.grounded_max_distance + EPSILON,
+                ..Default::default()
+            },
+            &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+        ) {
+            let ground_angle = hit.normal1.angle_between(Vec3::Y);
+            is_grounded = ground_angle <= body.max_terrain_slope;
+        }
+
+        if is_grounded {
             velocity.y = 0.0;
             commands.entity(entity).insert(Grounded);
         } else {
