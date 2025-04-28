@@ -235,17 +235,31 @@ pub fn collide_and_slide_debug_visualization(
 }
 
 pub fn snap_to_floor(
-    mut bodies: Query<(
-        &KinematicCharacterBody,
-        &Collider,
-        &Velocity,
-        &mut Transform,
-    )>,
+    mut bodies: Query<(&KinematicCharacterBody, &Collider, &mut Transform), Without<Grounded>>,
     spatial_query: SpatialQuery,
 ) {
-    // bodies
-    //     .par_iter_mut()
-    //     .for_each(|(_body, collider, velocity, mut transform)| {}
+    bodies
+        .par_iter_mut()
+        .for_each(|(body, collider, mut transform)| {
+            if !body.snap_to_floor {
+                return;
+            }
+
+            let adjusted_collider = inflated_collider(collider, -EPSILON);
+            if let Some(hit) = spatial_query.cast_shape(
+                &adjusted_collider,
+                transform.translation,
+                Quat::IDENTITY,
+                Dir3::new_unchecked(Vec3::NEG_Y),
+                &ShapeCastConfig {
+                    max_distance: body.snap_to_floor_max_distance + EPSILON,
+                    ..Default::default()
+                },
+                &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
+            ) {
+                transform.translation.y -= hit.distance - EPSILON;
+            }
+        });
 }
 
 fn respond_to_ground(
