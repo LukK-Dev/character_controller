@@ -9,7 +9,7 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow, WindowMode},
 };
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use std::time::Duration;
 
 const PLAYGROUND_SCENE_PATH: &str = "./playground.glb";
@@ -20,8 +20,11 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             DefaultPlugins,
+            EguiPlugin {
+                enable_multipass_for_primary_context: true,
+            },
             WorldInspectorPlugin::new(),
-            FrameTimeDiagnosticsPlugin,
+            FrameTimeDiagnosticsPlugin::default(),
         ));
 
         app.add_plugins((PlayerPlugin, FlycamPlugin, PhysicsPlugin::default()));
@@ -87,7 +90,7 @@ fn spawn_spheres(
     let material = materials.add(material);
     if input.pressed(MouseButton::Left) && timer.finished() {
         let sphere_mesh = meshes.add(Sphere::new(0.5));
-        let camera_transform = camera.get_single().unwrap();
+        let camera_transform = camera.single().unwrap();
         commands.spawn((
             Mesh3d(sphere_mesh),
             MeshMaterial3d(material),
@@ -105,7 +108,7 @@ fn fullscreen_on_f11(
     input: Res<ButtonInput<KeyCode>>,
 ) {
     if input.just_pressed(KeyCode::F11) {
-        if let Ok(mut primary_window) = primary_window.get_single_mut() {
+        if let Ok(mut primary_window) = primary_window.single_mut() {
             primary_window.mode = match primary_window.mode {
                 WindowMode::Windowed => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
                 _ => WindowMode::Windowed,
@@ -119,7 +122,7 @@ fn reset_player(
     keyboard: Res<ButtonInput<KeyCode>>,
 ) {
     if keyboard.just_pressed(KeyCode::KeyR) {
-        if let Ok((mut transform, mut velocity)) = player.get_single_mut() {
+        if let Ok((mut transform, mut velocity)) = player.single_mut() {
             transform.translation = Vec3::ZERO.with_y(5.0);
             velocity.0 = Vec3::ZERO;
         }
@@ -137,7 +140,7 @@ fn update_window_title(
     mut primary_window: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     if let Some(fps_diagnostic) = diagnostics.get_measurement(&FrameTimeDiagnosticsPlugin::FPS) {
-        if let Ok(mut primary_window) = primary_window.get_single_mut() {
+        if let Ok(mut primary_window) = primary_window.single_mut() {
             primary_window.title = format!(
                 "Character Controller - {} FPS",
                 fps_diagnostic.value.round()

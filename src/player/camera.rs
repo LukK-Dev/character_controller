@@ -45,8 +45,8 @@ fn orbit(
     player: Query<&ActionState<Action>, With<Player>>,
     time: Res<Time>,
 ) {
-    if let Ok((camera, mut camera_transform)) = camera.get_single_mut() {
-        if let Ok(input) = player.get_single() {
+    if let Ok((camera, mut camera_transform)) = camera.single_mut() {
+        if let Ok(input) = player.single() {
             let orbit_direction = -input
                 .clamped_axis_pair(&Action::CameraOrbit)
                 .normalize_or_zero();
@@ -65,8 +65,8 @@ fn follow_player(
     mut camera: Query<(&PlayerCamera, &mut Transform)>,
     player: Query<&Transform, (With<Player>, Without<PlayerCamera>)>,
 ) {
-    if let Ok((camera, mut camera_transform)) = camera.get_single_mut() {
-        if let Ok(player_transform) = player.get_single() {
+    if let Ok((camera, mut camera_transform)) = camera.single_mut() {
+        if let Ok(player_transform) = player.single() {
             // TODO: this is temporary
             let mut target_position = player_transform.translation;
             target_position.y += 0.7;
@@ -81,8 +81,8 @@ fn prevent_blindness(
     player: Query<&Transform, (With<Player>, Without<PlayerCamera>)>,
     spatial_query: SpatialQuery,
 ) {
-    if let Ok(mut camera_transform) = camera.get_single_mut() {
-        if let Ok(player_transform) = player.get_single() {
+    if let Ok(mut camera_transform) = camera.single_mut() {
+        if let Ok(player_transform) = player.single() {
             let direction = camera_transform.translation - player_transform.translation;
             let distance = direction.length();
 

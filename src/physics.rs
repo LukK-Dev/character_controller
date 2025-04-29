@@ -1,6 +1,5 @@
 use avian3d::prelude::*;
 use bevy::{color::palettes::tailwind, prelude::*};
-use std::f32::consts::{FRAC_PI_2, PI};
 // TODO: apply small offset to avoid extended collider from penetrating surfaces
 
 // small number used to work around floating point inaccuracies
@@ -73,7 +72,7 @@ pub enum CollisionLayer {
 pub struct CollideAndSlideMaxIterations(usize);
 
 #[derive(Component)]
-#[require(Velocity, Transform, RigidBody(|| RigidBody::Kinematic), Collider)]
+#[require(Velocity, Transform, RigidBody::Kinematic, Collider)]
 pub struct KinematicCharacterBody {
     /// maximum distance between collider and ground for the body to be considered grounded
     grounded_max_distance: f32,

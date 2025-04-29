@@ -1,13 +1,12 @@
 mod camera;
 pub mod types;
 
-use std::f32::consts::PI;
-
 use crate::physics::{CollisionLayer, Grounded, KinematicCharacterBody, Velocity};
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use camera::{PlayerCamera, PlayerCameraPlugin};
 use leafwing_input_manager::prelude::*;
+use std::f32::consts::PI;
 use types::{Action, Player, PlayerModel};
 
 // TODO: decouple movement logic from input logic
@@ -81,7 +80,7 @@ fn on_spawn_player(
         .spawn((
             Name::new("Player"),
             Player::default(),
-            InputManagerBundle::with_map(input_map),
+            input_map,
             KinematicCharacterBody::default(),
             Collider::capsule(0.3, 1.3),
             CollisionLayers::new(CollisionLayer::Player, LayerMask::ALL),
@@ -95,13 +94,12 @@ fn on_spawn_player(
             },
         ))
         .id();
-    commands
-        .spawn((
-            SceneRoot(player_model.0.clone()),
-            Transform::from_rotation(Quat::from_axis_angle(Vec3::Y, PI))
-                .with_translation(Vec3::NEG_Y * (0.3 + 0.65)),
-        ))
-        .set_parent(player);
+    commands.spawn((
+        SceneRoot(player_model.0.clone()),
+        Transform::from_rotation(Quat::from_axis_angle(Vec3::Y, PI))
+            .with_translation(Vec3::NEG_Y * (0.3 + 0.65)),
+        ChildOf(player),
+    ));
 
     // TODO: move to an appropriate spot
     commands.spawn((
@@ -117,9 +115,8 @@ fn grounded_movement(
     >,
     player_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
     time: Res<Time>,
-    mut gizmos: Gizmos,
 ) {
-    if let Ok((player, input, mut transform, mut velocity)) = player.get_single_mut() {
+    if let Ok((player, input, mut transform, mut velocity)) = player.single_mut() {
         if input.just_pressed(&Action::Jump) {
             velocity.y = player.jump_impulse;
         }
@@ -134,7 +131,7 @@ fn grounded_movement(
             );
 
             // adjust rotation to take player camera rotation into account
-            if let Ok(player_camera_transform) = player_camera.get_single() {
+            if let Ok(player_camera_transform) = player_camera.single() {
                 let (yaw, _, _) = player_camera_transform.rotation.to_euler(EulerRot::YXZ);
                 let camera_rotation_offset = Quat::from_axis_angle(Vec3::Y, yaw);
                 transform.rotate(camera_rotation_offset);
@@ -176,7 +173,7 @@ fn airborne_movement(
     player_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
     time: Res<Time>,
 ) {
-    if let Ok((player, input, mut transform, mut velocity)) = player.get_single_mut() {
+    if let Ok((player, input, mut transform, mut velocity)) = player.single_mut() {
         let mut input_direction = input.clamped_axis_pair(&Action::Move).normalize_or_zero();
         input_direction.y = -input_direction.y;
         if input_direction.length_squared() > 0.0 {
@@ -187,7 +184,7 @@ fn airborne_movement(
             );
 
             // adjust rotation to take player camera rotation into account
-            if let Ok(player_camera_transform) = player_camera.get_single() {
+            if let Ok(player_camera_transform) = player_camera.single() {
                 let (yaw, _, _) = player_camera_transform.rotation.to_euler(EulerRot::YXZ);
                 let camera_rotation_offset = Quat::from_axis_angle(Vec3::Y, yaw);
                 transform.rotate(camera_rotation_offset);
@@ -209,7 +206,7 @@ fn airborne_movement(
 }
 
 fn apply_gravity(mut player: Query<(&Player, &mut Velocity), Without<Grounded>>, time: Res<Time>) {
-    if let Ok((player, mut velocity)) = player.get_single_mut() {
+    if let Ok((player, mut velocity)) = player.single_mut() {
         velocity.y -= player.gravity * time.delta_secs();
     }
 }

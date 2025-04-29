@@ -40,7 +40,7 @@ fn move_flycam(
     mouse_motion: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
 ) {
-    if let Ok((flycam, mut transform)) = flycam.get_single_mut() {
+    if let Ok((flycam, mut transform)) = flycam.single_mut() {
         if flycam.is_active {
             let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
             pitch -= (flycam.mouse_sensitivity * mouse_motion.delta.y).to_radians();
@@ -91,12 +91,12 @@ fn set_flycam_active(
     mut window: Query<&mut Window, With<PrimaryWindow>>,
     input: Res<ButtonInput<KeyCode>>,
 ) {
-    if let Ok(mut flycam) = flycam.get_single_mut() {
+    if let Ok(mut flycam) = flycam.single_mut() {
         if input.just_pressed(KeyCode::Escape) {
             flycam.is_active = !flycam.is_active;
         }
 
-        if let Ok(mut window) = window.get_single_mut() {
+        if let Ok(mut window) = window.single_mut() {
             window.cursor_options.grab_mode = if flycam.is_active {
                 CursorGrabMode::Confined
             } else {
