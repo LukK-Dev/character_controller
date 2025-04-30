@@ -64,14 +64,18 @@ fn orbit(
 fn follow_player(
     mut camera: Query<(&PlayerCamera, &mut Transform)>,
     player: Query<&Transform, (With<Player>, Without<PlayerCamera>)>,
+    _time: Res<Time>,
 ) {
     if let Ok((camera, mut camera_transform)) = camera.single_mut() {
         if let Ok(player_transform) = player.single() {
-            // TODO: this is temporary
-            let mut target_position = player_transform.translation;
-            target_position.y += 0.7;
-            camera_transform.translation =
-                target_position - camera_transform.forward() * camera.target_distance;
+            let target_position =
+                player_transform.translation - camera_transform.forward() * camera.target_distance;
+            camera_transform.translation = target_position;
+            // camera_transform.translation.smooth_nudge(
+            //     &target_position,
+            //     f32::ln(20.0),
+            //     time.delta_secs(),
+            // );
         }
     }
 }

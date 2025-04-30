@@ -36,7 +36,7 @@ impl Plugin for PhysicsPlugin {
             PostUpdate,
             (
                 collide_and_slide,
-                snap_to_floor,
+                snap_to_ground,
                 collide_and_slide_debug_visualization,
                 respond_to_ground,
             )
@@ -78,9 +78,9 @@ pub struct KinematicCharacterBody {
     grounded_max_distance: f32,
     /// body will slide off of terrain with slope angles greater than ['max_terrain_slope']
     max_terrain_slope: f32,
-    snap_to_floor: bool,
+    snap_to_ground: bool,
     /// maximum distance to floor, at which snapping can occur
-    snap_to_floor_max_distance: f32,
+    snap_to_ground_max_distance: f32,
 }
 
 impl Default for KinematicCharacterBody {
@@ -88,8 +88,8 @@ impl Default for KinematicCharacterBody {
         Self {
             grounded_max_distance: 0.05,
             max_terrain_slope: 45f32.to_radians(),
-            snap_to_floor: true,
-            snap_to_floor_max_distance: 0.5,
+            snap_to_ground: true,
+            snap_to_ground_max_distance: 0.5,
         }
     }
 }
@@ -230,7 +230,7 @@ pub fn collide_and_slide_debug_visualization(
     }
 }
 
-pub fn snap_to_floor(
+pub fn snap_to_ground(
     mut bodies: Query<
         (
             &KinematicCharacterBody,
@@ -245,7 +245,8 @@ pub fn snap_to_floor(
     bodies
         .par_iter_mut()
         .for_each(|(body, collider, velocity, mut transform)| {
-            if !body.snap_to_floor || velocity.y > 0.0 {
+            // only snap character to ground if vertical velocity is negative to allow for jumping
+            if !body.snap_to_ground || velocity.y > 0.0 {
                 return;
             }
 
@@ -256,7 +257,7 @@ pub fn snap_to_floor(
                 Quat::IDENTITY,
                 Dir3::new_unchecked(Vec3::NEG_Y),
                 &ShapeCastConfig {
-                    max_distance: body.snap_to_floor_max_distance + EPSILON,
+                    max_distance: body.snap_to_ground_max_distance + EPSILON,
                     ..Default::default()
                 },
                 &SpatialQueryFilter::from_mask(CollisionLayer::Terrain),
@@ -294,8 +295,6 @@ fn respond_to_ground(
             let ground_angle = hit.normal1.angle_between(Vec3::Y);
             is_grounded = ground_angle <= body.max_terrain_slope;
         }
-
-        info!(is_grounded);
 
         if is_grounded {
             velocity.y = 0.0;
