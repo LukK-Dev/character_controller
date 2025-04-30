@@ -12,7 +12,7 @@ use bevy::{
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use std::time::Duration;
 
-const PLAYGROUND_SCENE_PATH: &str = "./playground.glb";
+const PLAYGROUND_SCENE_PATH: &str = "./italy.glb";
 
 pub struct GamePlugin;
 
@@ -78,7 +78,7 @@ fn setup(mut commands: Commands, asset_server: ResMut<AssetServer>) {
 fn spawn_spheres(
     mut commands: Commands,
     input: Res<ButtonInput<MouseButton>>,
-    camera: Query<&Transform, With<Camera>>,
+    player: Query<&Transform, With<Player>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     time: Res<Time>,
@@ -90,14 +90,14 @@ fn spawn_spheres(
     let material = materials.add(material);
     if input.pressed(MouseButton::Left) && timer.finished() {
         let sphere_mesh = meshes.add(Sphere::new(0.5));
-        let camera_transform = camera.single().unwrap();
+        let player_transform = player.single().unwrap();
         commands.spawn((
             Mesh3d(sphere_mesh),
             MeshMaterial3d(material),
             RigidBody::Dynamic,
             Collider::sphere(0.5),
-            *camera_transform,
-            ExternalImpulse::new(camera_transform.forward().as_vec3() * 10.0),
+            *player_transform,
+            ExternalImpulse::new(player_transform.forward().as_vec3() * 10.0),
         ));
         timer.reset();
     }

@@ -76,8 +76,6 @@ pub struct CollideAndSlideMaxIterations(usize);
 pub struct KinematicCharacterBody {
     /// maximum distance between collider and ground for the body to be considered grounded
     grounded_max_distance: f32,
-    /// gap between collider of body and terrain to prevent getting stuck
-    // collider_gap: f32,
     /// body will slide off of terrain with slope angles greater than ['max_terrain_slope']
     max_terrain_slope: f32,
     snap_to_floor: bool,
@@ -89,10 +87,9 @@ impl Default for KinematicCharacterBody {
     fn default() -> Self {
         Self {
             grounded_max_distance: 0.05,
-            // collider_gap: 0.015,
             max_terrain_slope: 45f32.to_radians(),
             snap_to_floor: true,
-            snap_to_floor_max_distance: 0.1,
+            snap_to_floor_max_distance: 0.5,
         }
     }
 }
@@ -234,13 +231,21 @@ pub fn collide_and_slide_debug_visualization(
 }
 
 pub fn snap_to_floor(
-    mut bodies: Query<(&KinematicCharacterBody, &Collider, &mut Transform), Without<Grounded>>,
+    mut bodies: Query<
+        (
+            &KinematicCharacterBody,
+            &Collider,
+            &Velocity,
+            &mut Transform,
+        ),
+        With<Grounded>,
+    >,
     spatial_query: SpatialQuery,
 ) {
     bodies
         .par_iter_mut()
-        .for_each(|(body, collider, mut transform)| {
-            if !body.snap_to_floor {
+        .for_each(|(body, collider, velocity, mut transform)| {
+            if !body.snap_to_floor || velocity.y > 0.0 {
                 return;
             }
 
@@ -289,6 +294,8 @@ fn respond_to_ground(
             let ground_angle = hit.normal1.angle_between(Vec3::Y);
             is_grounded = ground_angle <= body.max_terrain_slope;
         }
+
+        info!(is_grounded);
 
         if is_grounded {
             velocity.y = 0.0;
