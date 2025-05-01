@@ -1,5 +1,6 @@
 use crate::{
     flycam::FlycamPlugin,
+    orbit_camera::OrbitCameraPlugin,
     physics::{CollisionLayer, PhysicsPlugin},
     player::{types::Player, PlayerPlugin, SpawnPlayer},
 };
@@ -29,7 +30,12 @@ impl Plugin for GamePlugin {
             FrameTimeDiagnosticsPlugin::default(),
         ));
 
-        app.add_plugins((PlayerPlugin, FlycamPlugin, PhysicsPlugin::default()));
+        app.add_plugins((
+            PlayerPlugin,
+            OrbitCameraPlugin,
+            FlycamPlugin,
+            PhysicsPlugin::default(),
+        ));
 
         app.add_systems(Startup, setup);
         app.add_systems(

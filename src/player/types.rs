@@ -1,9 +1,9 @@
 use crate::physics::KinematicCharacterBody;
 use bevy::prelude::*;
-use bevy_enhanced_input::prelude::InputContext;
+use bevy_enhanced_input::prelude::*;
 
 #[derive(Component, InputContext)]
-#[require(KinematicCharacterBody)]
+#[require(KinematicCharacterBody, Actions<Player>)]
 pub struct Player {
     pub gravity: f32,
     pub acceleration: f32,

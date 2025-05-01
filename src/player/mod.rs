@@ -3,7 +3,7 @@ mod input;
 pub mod types;
 
 use crate::{
-    orbit_camera::{OrbitCamera, TargetOf},
+    orbit_camera::{OrbitCamera, PreventBlindness, Smoothing, TargetOf},
     physics::{CollisionLayer, Grounded, KinematicCharacterBody, Velocity},
 };
 use avian3d::prelude::*;
@@ -49,15 +49,19 @@ fn on_spawn_player(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    let transform = trigger.event().transform;
+
     // TODO: move to an appropriate spot
     let camera = commands
         .spawn((
+            Name::new("Player Camera"),
             OrbitCamera::default(),
+            transform,
+            // Smoothing::default(),
+            PreventBlindness::default(),
             bevy::core_pipeline::smaa::Smaa::default(),
         ))
         .id();
-
-    let transform = trigger.event().transform;
 
     let mesh = meshes.add(Capsule3d::new(0.3, 1.3));
     let material = StandardMaterial {
