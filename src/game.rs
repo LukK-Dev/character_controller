@@ -9,6 +9,7 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow, WindowMode},
 };
+use bevy_enhanced_input::EnhancedInputPlugin;
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use std::time::Duration;
 
@@ -20,6 +21,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             DefaultPlugins,
+            EnhancedInputPlugin,
             EguiPlugin {
                 enable_multipass_for_primary_context: true,
             },

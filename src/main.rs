@@ -2,6 +2,7 @@
 
 mod flycam;
 mod game;
+mod orbit_camera;
 mod physics;
 mod player;
 

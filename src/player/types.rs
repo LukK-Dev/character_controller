@@ -1,19 +1,8 @@
 use crate::physics::KinematicCharacterBody;
 use bevy::prelude::*;
-use leafwing_input_manager::prelude::*;
+use bevy_enhanced_input::prelude::InputContext;
 
-#[derive(Actionlike, PartialEq, Eq, Clone, Copy, Hash, Debug, Reflect)]
-pub(super) enum Action {
-    #[actionlike(DualAxis)]
-    Move,
-    Jump,
-    Sprint,
-
-    #[actionlike(DualAxis)]
-    CameraOrbit,
-}
-
-#[derive(Component)]
+#[derive(Component, InputContext)]
 #[require(KinematicCharacterBody)]
 pub struct Player {
     pub gravity: f32,
