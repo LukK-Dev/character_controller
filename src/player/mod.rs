@@ -1,4 +1,3 @@
-mod camera;
 mod input;
 pub mod types;
 
